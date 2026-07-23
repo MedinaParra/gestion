@@ -30,17 +30,34 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Run slot and timeline tests
+      - name: Run tests and capture diagnostic
+        id: tests
         shell: bash
+        continue-on-error: true
         run: |
-          set -o pipefail
-          gradle --no-daemon testDebugUnitTest 2>&1 | tail -n 220
+          set +e
+          gradle --no-daemon testDebugUnitTest > gradle-test.log 2>&1
+          code=$?
+          echo "$code" > gradle-test-exit.txt
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          tail -n 120 gradle-test.log
+          exit 0
+
+      - name: Upload Gradle diagnostic
+        uses: actions/upload-artifact@v4
+        with:
+          name: RoyalSpin-gradle-diagnostic
+          path: |
+            gradle-test.log
+            gradle-test-exit.txt
+          if-no-files-found: error
+
+      - name: Verify tests
+        shell: bash
+        run: test "${{ steps.tests.outputs.exit_code }}" = "0"
 
       - name: Build debug APK
-        shell: bash
-        run: |
-          set -o pipefail
-          gradle --no-daemon assembleDebug 2>&1 | tail -n 220
+        run: gradle --no-daemon assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
