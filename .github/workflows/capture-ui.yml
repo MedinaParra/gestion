@@ -1,4 +1,4 @@
-name: Capture Royal Spin Final UI
+name: Capture Royal Spin Free Spins v1.6
 
 on:
   pull_request:
@@ -33,7 +33,7 @@ jobs:
       - name: Build APK
         run: gradle --no-daemon assembleDebug
 
-      - name: Capture representative final states
+      - name: Capture feature states
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 30
@@ -51,25 +51,24 @@ jobs:
             adb shell settings put secure immersive_mode_confirmations confirmed || true
             adb logcat -c || true
 
-            capture_mode() {
-              mode="$1"
-              file="$2"
-              wait="$3"
-              adb shell am force-stop cl.exequiel.royalspin || true
-              if [ -z "$mode" ]; then
-                adb shell am start -W -n cl.exequiel.royalspin/.MainActivity
-              else
-                adb shell am start -W -n cl.exequiel.royalspin/.MainActivity --es demo "$mode"
-              fi
-              sleep "$wait"
-              adb exec-out screencap -p > "screenshots/$file"
-              test -s "screenshots/$file"
-            }
+            adb shell am force-stop cl.exequiel.royalspin || true
+            adb shell am start -W -n cl.exequiel.royalspin/.MainActivity
+            sleep 2
+            adb exec-out screencap -p > screenshots/01-idle-v1.6.png
 
-            capture_mode "" 01-idle-v1.5.png 2
-            capture_mode anticipation 02-valid-anticipation.png 2.65
-            capture_mode seven 03-seven-cinematic.png 3.65
-            capture_mode wild 04-wild-royal-win.png 3.75
+            adb shell am force-stop cl.exequiel.royalspin || true
+            adb shell am start -W -n cl.exequiel.royalspin/.MainActivity --es demo feature
+            sleep 3
+            adb exec-out screencap -p > screenshots/02-wild-trigger.png
+            sleep 2.6
+            adb exec-out screencap -p > screenshots/03-feature-intro-30.png
+            sleep 4.2
+            adb exec-out screencap -p > screenshots/04-free-spins-hud.png
+
+            test -s screenshots/01-idle-v1.6.png
+            test -s screenshots/02-wild-trigger.png
+            test -s screenshots/03-feature-intro-30.png
+            test -s screenshots/04-free-spins-hud.png
 
             adb logcat -d > screenshots/logcat.txt || true
             if grep -q "FATAL EXCEPTION" screenshots/logcat.txt; then
@@ -81,7 +80,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: RoyalSpin-final-v1.5-screenshots
+          name: RoyalSpin-free-spins-v1.6-screenshots
           path: screenshots/**
           if-no-files-found: warn
 
@@ -89,6 +88,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: RoyalSpin-final-v1.5-apk
+          name: RoyalSpin-free-spins-v1.6-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
