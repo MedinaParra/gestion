@@ -26,12 +26,17 @@ public class MainActivity extends Activity {
         String demoMode = getIntent() == null ? null : getIntent().getStringExtra("demo");
         slotView = new SlotView(this, demoMode);
         SpectacleOverlay overlay = new SpectacleOverlay(this);
+        IterationBadge badge = new IterationBadge(this);
         FrameLayout root = new FrameLayout(this);
-        root.addView(slotView, new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
-        root.addView(overlay, new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        root.addView(slotView, match());
+        root.addView(overlay, match());
+        root.addView(badge, match());
         setContentView(root);
+    }
+
+    private static FrameLayout.LayoutParams match() {
+        return new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT);
     }
 
     @Override protected void onPause() {
