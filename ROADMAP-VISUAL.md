@@ -27,6 +27,13 @@ La matemática Stake Engine permanece separada de la presentación: 5×3, 20 lí
 - Presupuesto automático alto/equilibrado/reducido.
 - Solo reduce capas decorativas; nunca modifica el resultado, RTP o pago.
 
+## Validación completada
+- Pruebas unitarias Android aprobadas.
+- APK Android 24–35 compilado y firmado en modo debug.
+- Stake Engine Math SDK validado con 5.000 rondas trazables.
+- Cuatro capturas obtenidas en emulador: reposo, giro, revelado y celebración.
+- SHA-256 APK: `24a7aaac39f56930c87c2253bf416a4fa38090fb03c43080a3db8567fe73e62b`.
+
 ## Criterios preservados
 - Créditos exclusivamente ficticios.
 - Resultado fijado antes de la animación.
