@@ -23,14 +23,18 @@ public class MainActivity extends Activity {
                         | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                         | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
                         | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+
         String demoMode = getIntent() == null ? null : getIntent().getStringExtra("demo");
         slotView = new SlotView(this, demoMode);
-        SpectacleOverlay overlay = new SpectacleOverlay(this);
+        SpectacleOverlay spectacle = new SpectacleOverlay(this);
+        PremiumCelebrationOverlay celebration = new PremiumCelebrationOverlay(this, slotView);
         IterationBadge badge = new IterationBadge(this);
-        AdaptivePerformanceOverlay performance = new AdaptivePerformanceOverlay(this, overlay);
+        AdaptivePerformanceOverlay performance = new AdaptivePerformanceOverlay(this, spectacle);
+
         FrameLayout root = new FrameLayout(this);
         root.addView(slotView, match());
-        root.addView(overlay, match());
+        root.addView(spectacle, match());
+        root.addView(celebration, match());
         root.addView(badge, match());
         root.addView(performance, match());
         setContentView(root);
