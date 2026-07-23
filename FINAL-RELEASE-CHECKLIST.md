@@ -56,16 +56,20 @@ Este 100% corresponde al roadmap técnico del prototipo Android con créditos fi
 - [ ] Firma comercial de Play App Signing: requiere la cuenta del propietario.
 - [ ] Ficha, política de privacidad y clasificación de tienda: requieren datos comerciales del propietario.
 
-## Validaciones CI
+## Validaciones CI completadas
 
-1. `testDebugUnitTest`
-2. `lintDebug`
-3. `assembleDebug`
-4. Simulación Stake Engine de 5.000 rondas
-5. Prueba de estrés Java de 100.000 rondas
-6. Instalación en emulador Android con KVM
-7. Capturas: reposo, anticipación, campana, BAR, 7, gema y Wild
-8. Hash SHA-256 y prueba de integridad del APK
+1. `testDebugUnitTest`: aprobado.
+2. `lintDebug`: aprobado.
+3. `assembleDebug`: aprobado.
+4. Simulación Stake Engine de 5.000 rondas: aprobada.
+5. Prueba de estrés Java de 100.000 rondas: aprobada.
+6. Hash SHA-256: `4b26910249b1f37da07ca2d7f4d9f9ce448c0ffb27f9185c66f434d3437bacb7`.
+7. Integridad ZIP del APK: aprobada.
+8. APK final: 70.327 bytes.
+
+## Evidencia visual
+
+Las siete escenas de símbolos fueron capturadas y revisadas en `v0.9`. Para `v1.5`, tres intentos de Android Emulator Runner fallaron antes de ejecutar el script y no produjeron capturas. El APK sí compiló y fue publicado en cada intento. Se documenta como limitación de infraestructura de captura, no como validación positiva del AVD final.
 
 ## Próximas mejoras opcionales, fuera del 100% técnico
 
