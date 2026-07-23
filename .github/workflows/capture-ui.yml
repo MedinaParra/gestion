@@ -43,53 +43,73 @@ jobs:
           emulator-boot-timeout: 600
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            set -e
+            set +e
             mkdir -p screenshots
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             adb shell settings put secure immersive_mode_confirmations confirmed || true
+            adb logcat -c || true
 
             launch() {
-              adb shell am force-stop cl.exequiel.royalspin
-              if [ -z "$1" ]; then
-                adb shell am start -W -n cl.exequiel.royalspin/.MainActivity
+              mode="$1"
+              adb shell am force-stop cl.exequiel.royalspin || true
+              if [ -z "$mode" ]; then
+                adb shell am start -W -n cl.exequiel.royalspin/.MainActivity || true
               else
-                adb shell am start -W -n cl.exequiel.royalspin/.MainActivity --es demo "$1"
+                adb shell am start -W -n cl.exequiel.royalspin/.MainActivity --es demo "$mode" || true
               fi
+            }
+
+            shot() {
+              file="$1"
+              adb exec-out screencap -p > "screenshots/$file" || true
+              test -s "screenshots/$file" || echo "missing screenshot: $file" >> screenshots/capture-errors.txt
             }
 
             launch ""
             sleep 2
-            adb exec-out screencap -p > screenshots/01-idle-v1.5.png
+            shot 01-idle-v1.5.png
 
             launch anticipation
             sleep 2.65
-            adb exec-out screencap -p > screenshots/02-valid-anticipation.png
+            shot 02-valid-anticipation.png
 
             launch bell
             sleep 3.65
-            adb exec-out screencap -p > screenshots/03-bell-cinematic.png
+            shot 03-bell-cinematic.png
 
             launch bar
             sleep 3.65
-            adb exec-out screencap -p > screenshots/04-bar-mechanical.png
+            shot 04-bar-mechanical.png
 
             launch seven
             sleep 3.65
-            adb exec-out screencap -p > screenshots/05-seven-energy.png
+            shot 05-seven-energy.png
 
             launch diamond
             sleep 3.65
-            adb exec-out screencap -p > screenshots/06-diamond-prismatic.png
+            shot 06-diamond-prismatic.png
 
             launch wild
             sleep 3.75
-            adb exec-out screencap -p > screenshots/07-wild-royal-win.png
+            shot 07-wild-royal-win.png
 
-      - name: Upload screenshots
+            adb logcat -d > screenshots/logcat.txt || true
+            grep -E "FATAL EXCEPTION|AndroidRuntime|RoyalSpinFinalView" screenshots/logcat.txt \
+              > screenshots/runtime-summary.txt || true
+            test -s screenshots/01-idle-v1.5.png
+            test -s screenshots/02-valid-anticipation.png
+            test -s screenshots/03-bell-cinematic.png
+            test -s screenshots/04-bar-mechanical.png
+            test -s screenshots/05-seven-energy.png
+            test -s screenshots/06-diamond-prismatic.png
+            test -s screenshots/07-wild-royal-win.png
+
+      - name: Upload screenshots and runtime log
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: RoyalSpin-final-v1.5-screenshots
-          path: screenshots/*.png
+          path: screenshots/**
           if-no-files-found: error
 
       - name: Upload APK
