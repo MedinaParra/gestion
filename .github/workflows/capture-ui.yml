@@ -7,7 +7,7 @@ on:
 jobs:
   capture:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,14 +36,18 @@ jobs:
       - name: Capture emulator screenshots
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 29
+          api-level: 30
           arch: x86_64
           profile: pixel_2
+          cores: 4
+          ram-size: 4096M
+          heap-size: 1024M
+          disk-size: 4096M
           disable-animations: false
-          emulator-boot-timeout: 600
+          emulator-boot-timeout: 900
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            set +e
+            set -e
             mkdir -p screenshots
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             adb shell settings put secure immersive_mode_confirmations confirmed || true
@@ -53,16 +57,15 @@ jobs:
               mode="$1"
               adb shell am force-stop cl.exequiel.royalspin || true
               if [ -z "$mode" ]; then
-                adb shell am start -W -n cl.exequiel.royalspin/.MainActivity || true
+                adb shell am start -W -n cl.exequiel.royalspin/.MainActivity
               else
-                adb shell am start -W -n cl.exequiel.royalspin/.MainActivity --es demo "$mode" || true
+                adb shell am start -W -n cl.exequiel.royalspin/.MainActivity --es demo "$mode"
               fi
             }
 
             shot() {
-              file="$1"
-              adb exec-out screencap -p > "screenshots/$file" || true
-              test -s "screenshots/$file" || echo "missing screenshot: $file" >> screenshots/capture-errors.txt
+              adb exec-out screencap -p > "screenshots/$1"
+              test -s "screenshots/$1"
             }
 
             launch ""
@@ -94,15 +97,10 @@ jobs:
             shot 07-wild-royal-win.png
 
             adb logcat -d > screenshots/logcat.txt || true
-            grep -E "FATAL EXCEPTION|AndroidRuntime|RoyalSpinFinalView" screenshots/logcat.txt \
-              > screenshots/runtime-summary.txt || true
-            test -s screenshots/01-idle-v1.5.png
-            test -s screenshots/02-valid-anticipation.png
-            test -s screenshots/03-bell-cinematic.png
-            test -s screenshots/04-bar-mechanical.png
-            test -s screenshots/05-seven-energy.png
-            test -s screenshots/06-diamond-prismatic.png
-            test -s screenshots/07-wild-royal-win.png
+            if grep -q "FATAL EXCEPTION" screenshots/logcat.txt; then
+              grep -A 30 "FATAL EXCEPTION" screenshots/logcat.txt > screenshots/runtime-summary.txt
+              exit 1
+            fi
 
       - name: Upload screenshots and runtime log
         if: always()
@@ -110,9 +108,10 @@ jobs:
         with:
           name: RoyalSpin-final-v1.5-screenshots
           path: screenshots/**
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: Upload APK
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: RoyalSpin-final-v1.5-apk
