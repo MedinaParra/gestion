@@ -1,4 +1,4 @@
-name: Build Royal Spin Audiovisual APK
+name: Build Royal Spin Royal Art APK
 
 on:
   pull_request:
@@ -40,13 +40,13 @@ jobs:
           code=$?
           echo "$code" > gradle-test-exit.txt
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          tail -n 120 gradle-test.log
+          tail -n 160 gradle-test.log
           exit 0
 
       - name: Upload Gradle diagnostic
         uses: actions/upload-artifact@v4
         with:
-          name: RoyalSpin-gradle-diagnostic
+          name: RoyalSpin-v0.9-gradle-diagnostic
           path: |
             gradle-test.log
             gradle-test-exit.txt
@@ -62,6 +62,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: RoyalSpin-audiovisual-v0.8-apk
+          name: RoyalSpin-royal-art-v0.9-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
