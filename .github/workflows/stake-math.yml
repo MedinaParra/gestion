@@ -1,0 +1,47 @@
+name: Validate Stake Engine Math
+
+on:
+  pull_request:
+    paths:
+      - 'stake-engine/**'
+      - '.github/workflows/stake-math.yml'
+  workflow_dispatch:
+
+jobs:
+  simulate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Royal Spin
+        uses: actions/checkout@v4
+
+      - name: Configure Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Fetch official Stake Engine Math SDK
+        run: git clone --depth 1 https://github.com/StakeEngine/math-sdk.git /tmp/math-sdk
+
+      - name: Install SDK dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r /tmp/math-sdk/requirements.txt
+          pip install -e /tmp/math-sdk
+
+      - name: Install Royal Spin game files
+        run: cp -R stake-engine/royal_spin_lines /tmp/math-sdk/games/royal_spin_lines
+
+      - name: Generate 5,000 traceable rounds
+        working-directory: /tmp/math-sdk
+        run: python games/royal_spin_lines/run.py
+
+      - name: Show generated files
+        run: find /tmp/math-sdk/games/royal_spin_lines/library -maxdepth 3 -type f -print
+
+      - name: Upload Stake math output
+        uses: actions/upload-artifact@v4
+        with:
+          name: RoyalSpin-stake-math-v0.2
+          path: /tmp/math-sdk/games/royal_spin_lines/library
+          if-no-files-found: error
