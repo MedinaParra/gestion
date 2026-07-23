@@ -10,8 +10,8 @@ android {
         applicationId 'cl.exequiel.royalspin'
         minSdk 24
         targetSdk 35
-        versionCode 1
-        versionName '1.0.0-demo'
+        versionCode 15
+        versionName '1.5.0-rc1'
     }
 
     buildTypes {
@@ -25,4 +25,12 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+}
+
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
 }
