@@ -5,6 +5,7 @@ import android.os.Bundle;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
+import android.widget.FrameLayout;
 
 public class MainActivity extends Activity {
     private SlotView slotView;
@@ -24,7 +25,13 @@ public class MainActivity extends Activity {
                         | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
         String demoMode = getIntent() == null ? null : getIntent().getStringExtra("demo");
         slotView = new SlotView(this, demoMode);
-        setContentView(slotView);
+        SpectacleOverlay overlay = new SpectacleOverlay(this);
+        FrameLayout root = new FrameLayout(this);
+        root.addView(slotView, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        root.addView(overlay, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        setContentView(root);
     }
 
     @Override protected void onPause() {
