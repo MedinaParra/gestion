@@ -7,6 +7,8 @@ import android.view.Window;
 import android.view.WindowManager;
 
 public class MainActivity extends Activity {
+    private SlotView slotView;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -24,6 +26,13 @@ public class MainActivity extends Activity {
                         | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
                         | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
         );
-        setContentView(new CasinoView(this));
+        slotView = new SlotView(this);
+        setContentView(slotView);
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (slotView != null) slotView.release();
+        super.onDestroy();
     }
 }
