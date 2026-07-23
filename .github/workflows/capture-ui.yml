@@ -7,7 +7,7 @@ on:
 jobs:
   capture:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,16 +33,14 @@ jobs:
       - name: Build APK
         run: gradle --no-daemon assembleDebug
 
-      - name: Capture emulator screenshots
+      - name: Capture representative final states
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 30
+          target: aosp_atd
           arch: x86_64
           profile: pixel_2
-          cores: 4
-          ram-size: 4096M
-          heap-size: 1024M
-          disk-size: 4096M
+          cores: 2
           disable-animations: false
           emulator-boot-timeout: 900
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
@@ -53,48 +51,25 @@ jobs:
             adb shell settings put secure immersive_mode_confirmations confirmed || true
             adb logcat -c || true
 
-            launch() {
+            capture_mode() {
               mode="$1"
+              file="$2"
+              wait="$3"
               adb shell am force-stop cl.exequiel.royalspin || true
               if [ -z "$mode" ]; then
                 adb shell am start -W -n cl.exequiel.royalspin/.MainActivity
               else
                 adb shell am start -W -n cl.exequiel.royalspin/.MainActivity --es demo "$mode"
               fi
+              sleep "$wait"
+              adb exec-out screencap -p > "screenshots/$file"
+              test -s "screenshots/$file"
             }
 
-            shot() {
-              adb exec-out screencap -p > "screenshots/$1"
-              test -s "screenshots/$1"
-            }
-
-            launch ""
-            sleep 2
-            shot 01-idle-v1.5.png
-
-            launch anticipation
-            sleep 2.65
-            shot 02-valid-anticipation.png
-
-            launch bell
-            sleep 3.65
-            shot 03-bell-cinematic.png
-
-            launch bar
-            sleep 3.65
-            shot 04-bar-mechanical.png
-
-            launch seven
-            sleep 3.65
-            shot 05-seven-energy.png
-
-            launch diamond
-            sleep 3.65
-            shot 06-diamond-prismatic.png
-
-            launch wild
-            sleep 3.75
-            shot 07-wild-royal-win.png
+            capture_mode "" 01-idle-v1.5.png 2
+            capture_mode anticipation 02-valid-anticipation.png 2.65
+            capture_mode seven 03-seven-cinematic.png 3.65
+            capture_mode wild 04-wild-royal-win.png 3.75
 
             adb logcat -d > screenshots/logcat.txt || true
             if grep -q "FATAL EXCEPTION" screenshots/logcat.txt; then
