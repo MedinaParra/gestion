@@ -35,8 +35,26 @@ jobs:
         working-directory: /tmp/math-sdk
         shell: bash
         run: |
-          set -o pipefail
-          python games/royal_spin_lines/run.py 2>&1 | tail -n 120
+          set +e
+          python games/royal_spin_lines/run.py > /tmp/stake-run.log 2>&1
+          echo $? > /tmp/stake-exit-code
+          tail -n 80 /tmp/stake-run.log
+          exit 0
+
+      - name: Upload Stake diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: RoyalSpin-stake-diagnostic
+          path: |
+            /tmp/stake-run.log
+            /tmp/stake-exit-code
+          if-no-files-found: error
+
+      - name: Verify Stake simulation result
+        shell: bash
+        run: |
+          test "$(cat /tmp/stake-exit-code)" = "0"
 
       - name: Show generated files
         run: find /tmp/math-sdk/games/royal_spin_lines/library -maxdepth 3 -type f -print
