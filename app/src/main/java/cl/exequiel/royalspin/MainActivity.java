@@ -31,6 +31,12 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    protected void onPause() {
+        if (slotView != null) slotView.onHostPause();
+        super.onPause();
+    }
+
+    @Override
     protected void onDestroy() {
         if (slotView != null) slotView.release();
         super.onDestroy();
