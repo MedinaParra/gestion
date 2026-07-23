@@ -17,7 +17,7 @@ public final class HapticEngine {
 
     public void setEnabled(boolean value) {
         enabled = value;
-        if (!enabled && vibrator != null) vibrator.cancel();
+        if (!enabled) cancel();
     }
 
     public boolean isEnabled() {
@@ -72,7 +72,11 @@ public final class HapticEngine {
         return enabled && vibrator != null && vibrator.hasVibrator();
     }
 
-    public void release() {
+    public void cancel() {
         if (vibrator != null) vibrator.cancel();
+    }
+
+    public void release() {
+        cancel();
     }
 }
