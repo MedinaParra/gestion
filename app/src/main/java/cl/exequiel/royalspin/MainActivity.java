@@ -5,17 +5,16 @@ import android.os.Bundle;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
-import android.widget.FrameLayout;
 
 public class MainActivity extends Activity {
-    private SlotView slotView;
+    private RoyalSpinFinalView gameView;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
                 WindowManager.LayoutParams.FLAG_FULLSCREEN);
-        getWindow().setNavigationBarColor(0xFF05070D);
+        getWindow().setNavigationBarColor(0xFF020205);
         getWindow().getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                         | View.SYSTEM_UI_FLAG_FULLSCREEN
@@ -25,33 +24,28 @@ public class MainActivity extends Activity {
                         | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
 
         String demoMode = getIntent() == null ? null : getIntent().getStringExtra("demo");
-        slotView = new SlotView(this, demoMode);
-        SpectacleOverlay spectacle = new SpectacleOverlay(this);
-        PremiumCelebrationOverlay celebration = new PremiumCelebrationOverlay(this, slotView);
-        IterationBadge badge = new IterationBadge(this);
-        AdaptivePerformanceOverlay performance = new AdaptivePerformanceOverlay(this, spectacle);
-
-        FrameLayout root = new FrameLayout(this);
-        root.addView(slotView, match());
-        root.addView(spectacle, match());
-        root.addView(celebration, match());
-        root.addView(badge, match());
-        root.addView(performance, match());
-        setContentView(root);
+        gameView = new RoyalSpinFinalView(this, demoMode);
+        setContentView(gameView);
     }
 
-    private static FrameLayout.LayoutParams match() {
-        return new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT);
+    @Override protected void onResume() {
+        super.onResume();
+        getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                        | View.SYSTEM_UI_FLAG_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
     }
 
     @Override protected void onPause() {
-        if (slotView != null) slotView.onHostPause();
+        if (gameView != null) gameView.onHostPause();
         super.onPause();
     }
 
     @Override protected void onDestroy() {
-        if (slotView != null) slotView.release();
+        if (gameView != null) gameView.release();
         super.onDestroy();
     }
 }
