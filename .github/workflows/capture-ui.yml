@@ -1,0 +1,64 @@
+name: Capture Royal Spin UI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configure Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Build APK
+        run: gradle --no-daemon assembleDebug
+
+      - name: Capture emulator screenshots
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: false
+          script: |
+            mkdir -p screenshots
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            adb shell am force-stop cl.exequiel.royalspin
+            adb shell am start -W -n cl.exequiel.royalspin/.MainActivity
+            sleep 2
+            adb exec-out screencap -p > screenshots/01-idle.png
+            adb shell am force-stop cl.exequiel.royalspin
+            adb shell am start -W -n cl.exequiel.royalspin/.MainActivity --es demo bigwin
+            sleep 1.45
+            adb exec-out screencap -p > screenshots/02-spinning.png
+            sleep 1.55
+            adb exec-out screencap -p > screenshots/03-reveal.png
+            sleep 1.5
+            adb exec-out screencap -p > screenshots/04-celebration.png
+
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: RoyalSpin-screenshots-v${{ github.run_number }}
+          path: screenshots/*.png
+          if-no-files-found: error
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: RoyalSpin-visual-apk-v${{ github.run_number }}
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
