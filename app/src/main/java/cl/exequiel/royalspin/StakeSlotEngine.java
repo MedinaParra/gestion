@@ -47,11 +47,15 @@ public final class StakeSlotEngine {
 
     private static final Map<String, int[]> PAYTABLE = createPaytable();
     private static final String[][] REEL_STRIPS = createReelStrips();
+    private final WildTriggerEvaluator featureEvaluator = new WildTriggerEvaluator();
 
     public SpinResult spin(Random random, int requestedBetPerLine) {
-        if (random == null) {
-            throw new IllegalArgumentException("random is required");
-        }
+        return spin(random, requestedBetPerLine, GameMode.BASE_GAME);
+    }
+
+    public SpinResult spin(Random random, int requestedBetPerLine, GameMode mode) {
+        if (random == null) throw new IllegalArgumentException("random is required");
+        GameMode safeMode = mode == null ? GameMode.BASE_GAME : mode;
         int betPerLine = clampBet(requestedBetPerLine);
         String[][] board = new String[REEL_COUNT][ROW_COUNT];
         int[] stops = new int[REEL_COUNT];
@@ -64,11 +68,17 @@ public final class StakeSlotEngine {
                 board[reel][row] = strip[(stop + row) % strip.length];
             }
         }
-        return evaluate(board, stops, betPerLine);
+        return evaluate(board, stops, betPerLine, safeMode);
     }
 
     public SpinResult evaluate(String[][] board, int[] stops, int requestedBetPerLine) {
+        return evaluate(board, stops, requestedBetPerLine, GameMode.BASE_GAME);
+    }
+
+    public SpinResult evaluate(String[][] board, int[] stops, int requestedBetPerLine,
+                               GameMode mode) {
         validateBoard(board);
+        GameMode safeMode = mode == null ? GameMode.BASE_GAME : mode;
         int betPerLine = clampBet(requestedBetPerLine);
         List<LineWin> wins = new ArrayList<>();
         int totalPayout = 0;
@@ -83,25 +93,20 @@ public final class StakeSlotEngine {
             if (evaluation.multiplier > 0) {
                 int payout = evaluation.multiplier * betPerLine;
                 totalPayout += payout;
-                wins.add(new LineWin(
-                        lineIndex,
-                        payline.clone(),
-                        evaluation.symbol,
-                        evaluation.count,
-                        evaluation.multiplier,
-                        payout
-                ));
+                wins.add(new LineWin(lineIndex, payline.clone(), evaluation.symbol,
+                        evaluation.count, evaluation.multiplier, payout));
             }
         }
 
-        return new SpinResult(
-                copyBoard(board),
+        FeatureTrigger featureTrigger = featureEvaluator.evaluate(board, PAYLINES, safeMode);
+        return new SpinResult(copyBoard(board),
                 stops == null ? new int[REEL_COUNT] : stops.clone(),
+                safeMode,
                 betPerLine,
                 betPerLine * LINE_COUNT,
                 totalPayout,
-                Collections.unmodifiableList(wins)
-        );
+                Collections.unmodifiableList(wins),
+                featureTrigger);
     }
 
     static int evaluateLineMultiplierForTest(String[] lineSymbols) {
@@ -150,25 +155,17 @@ public final class StakeSlotEngine {
 
         int matched = 0;
         for (String symbol : lineSymbols) {
-            if (baseSymbol.equals(symbol) || WILD.equals(symbol)) {
-                matched++;
-            } else {
-                break;
-            }
+            if (baseSymbol.equals(symbol) || WILD.equals(symbol)) matched++;
+            else break;
         }
 
-        if (matched < 3) {
-            return Evaluation.NONE;
-        }
+        if (matched < 3) return Evaluation.NONE;
 
         int multiplier = payoutFor(baseSymbol, matched);
         int wildPrefix = 0;
         for (String symbol : lineSymbols) {
-            if (WILD.equals(symbol)) {
-                wildPrefix++;
-            } else {
-                break;
-            }
+            if (WILD.equals(symbol)) wildPrefix++;
+            else break;
         }
         if (wildPrefix >= 3) {
             int wildMultiplier = payoutFor(WILD, wildPrefix);
@@ -181,9 +178,7 @@ public final class StakeSlotEngine {
 
     private static int payoutFor(String symbol, int count) {
         int[] payouts = PAYTABLE.get(symbol);
-        if (payouts == null || count < 3 || count > 5) {
-            return 0;
-        }
+        if (payouts == null || count < 3 || count > 5) return 0;
         return payouts[count - 3];
     }
 
@@ -229,9 +224,7 @@ public final class StakeSlotEngine {
 
     private static String[][] copyBoard(String[][] source) {
         String[][] copy = new String[source.length][];
-        for (int i = 0; i < source.length; i++) {
-            copy[i] = source[i].clone();
-        }
+        for (int i = 0; i < source.length; i++) copy[i] = source[i].clone();
         return copy;
     }
 
@@ -269,19 +262,23 @@ public final class StakeSlotEngine {
     public static final class SpinResult {
         public final String[][] board;
         public final int[] stops;
+        public final GameMode mode;
         public final int betPerLine;
         public final int totalBet;
         public final int totalPayout;
         public final List<LineWin> lineWins;
+        public final FeatureTrigger featureTrigger;
 
-        SpinResult(String[][] board, int[] stops, int betPerLine, int totalBet,
-                   int totalPayout, List<LineWin> lineWins) {
+        SpinResult(String[][] board, int[] stops, GameMode mode, int betPerLine, int totalBet,
+                   int totalPayout, List<LineWin> lineWins, FeatureTrigger featureTrigger) {
             this.board = board;
             this.stops = stops;
+            this.mode = mode;
             this.betPerLine = betPerLine;
             this.totalBet = totalBet;
             this.totalPayout = totalPayout;
             this.lineWins = lineWins;
+            this.featureTrigger = featureTrigger == null ? FeatureTrigger.NONE : featureTrigger;
         }
 
         public double payoutMultiplier() {

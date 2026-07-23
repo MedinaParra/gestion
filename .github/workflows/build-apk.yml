@@ -1,4 +1,4 @@
-name: Build Royal Spin Final RC
+name: Build Royal Spin Free Spins v1.6
 
 on:
   pull_request:
@@ -36,11 +36,11 @@ jobs:
         continue-on-error: true
         run: |
           set +e
-          gradle --no-daemon testDebugUnitTest lintDebug assembleDebug > final-validation.log 2>&1
+          gradle --no-daemon testDebugUnitTest lintDebug assembleDebug > feature-validation.log 2>&1
           code=$?
-          echo "$code" > final-validation-exit.txt
+          echo "$code" > feature-validation-exit.txt
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          tail -n 220 final-validation.log
+          tail -n 220 feature-validation.log
           exit 0
 
       - name: Build validation report
@@ -49,25 +49,25 @@ jobs:
         run: |
           apk=app/build/outputs/apk/debug/app-debug.apk
           {
-            echo "Royal Spin 1.5.0-rc1"
-            echo "Validation exit: $(cat final-validation-exit.txt 2>/dev/null || echo missing)"
+            echo "Royal Spin 1.6.0-free-spins-foundation"
+            echo "Validation exit: $(cat feature-validation-exit.txt 2>/dev/null || echo missing)"
             echo "UTC: $(date -u +%FT%TZ)"
             if [ -f "$apk" ]; then
               echo "APK bytes: $(stat -c%s "$apk")"
               echo "APK SHA-256: $(sha256sum "$apk" | cut -d' ' -f1)"
               unzip -t "$apk" | tail -n 2
             fi
-          } | tee final-report.txt
+          } | tee feature-report.txt
 
       - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: RoyalSpin-final-v1.5-validation
+          name: RoyalSpin-free-spins-v1.6-validation
           path: |
-            final-validation.log
-            final-validation-exit.txt
-            final-report.txt
+            feature-validation.log
+            feature-validation-exit.txt
+            feature-report.txt
             app/build/reports/tests/testDebugUnitTest/**
             app/build/reports/lint-results-debug.html
           if-no-files-found: warn
@@ -76,9 +76,9 @@ jobs:
         shell: bash
         run: test "${{ steps.validate.outputs.exit_code }}" = "0"
 
-      - name: Upload final APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: RoyalSpin-final-v1.5-apk
+          name: RoyalSpin-free-spins-v1.6-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
