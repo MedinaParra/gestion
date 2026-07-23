@@ -9,6 +9,7 @@ import android.graphics.Path;
 import android.graphics.RadialGradient;
 import android.graphics.RectF;
 import android.graphics.Shader;
+import android.graphics.Typeface;
 import android.os.SystemClock;
 import android.view.Choreographer;
 import android.view.View;
@@ -16,6 +17,7 @@ import android.view.View;
 /** Transparent vector overlay used by v0.5+ without touching Stake math. */
 public final class SpectacleOverlay extends View implements Choreographer.FrameCallback {
     public static final int LEVEL = 5;
+    public static final String LABEL = "v0.5 · LIVING SYMBOLS";
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path = new Path();
     private boolean running;
@@ -54,10 +56,27 @@ public final class SpectacleOverlay extends View implements Choreographer.FrameC
         canvas.save();
         canvas.translate(offsetX, offsetY);
         canvas.scale(scale, scale);
+        drawVersionBadge(canvas);
         drawLivingReels(canvas, now);
         drawHolographicCrown(canvas, now);
         drawEnergyRail(canvas, now);
         canvas.restore();
+    }
+
+    private void drawVersionBadge(Canvas c) {
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(0xE8101320);
+        c.drawRoundRect(new RectF(111, 69, 249, 86), 8, 8, paint);
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(1f);
+        paint.setColor(0xAA9B62FF);
+        c.drawRoundRect(new RectF(111, 69, 249, 86), 8, 8, paint);
+        paint.setStyle(Paint.Style.FILL);
+        paint.setTypeface(Typeface.create("sans", Typeface.BOLD));
+        paint.setTextAlign(Paint.Align.CENTER);
+        paint.setTextSize(7.5f);
+        paint.setColor(0xFFE8DFFF);
+        c.drawText(LABEL, 180, 80.5f, paint);
     }
 
     private void drawLivingReels(Canvas c, long now) {
