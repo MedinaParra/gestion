@@ -36,8 +36,7 @@ jobs:
       - name: Capture feature states
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 30
-          target: aosp_atd
+          api-level: 29
           arch: x86_64
           profile: pixel_2
           cores: 2
