@@ -55,7 +55,84 @@ public final class CasinoAudio {
     }
 
     public void playWin(double multiplier) {
+        playSymbolWin("", 0, multiplier);
+    }
+
+    public void playSymbolWin(String symbol, int count, double multiplier) {
         stopRewardSequence();
+        if (StakeSlotEngine.BELL.equals(symbol)) {
+            bellSequence(count, multiplier);
+        } else if (StakeSlotEngine.BAR.equals(symbol)) {
+            barSequence(count, multiplier);
+        } else if (StakeSlotEngine.SEVEN.equals(symbol)) {
+            sevenSequence(count, multiplier);
+        } else if (StakeSlotEngine.DIAMOND.equals(symbol)) {
+            diamondSequence(count, multiplier);
+        } else if (StakeSlotEngine.WILD.equals(symbol)) {
+            wildSequence(count, multiplier);
+        } else {
+            genericWin(multiplier);
+        }
+    }
+
+    private void bellSequence(int count, double multiplier) {
+        int repeats = Math.max(3, Math.min(5, count));
+        for (int i = 0; i < repeats; i++) {
+            tone(rewards, i % 2 == 0 ? ToneGenerator.TONE_DTMF_6 : ToneGenerator.TONE_DTMF_9,
+                    128, i * 145);
+            tone(ui, ToneGenerator.TONE_PROP_BEEP2, 42, i * 145 + 30);
+        }
+        tone(rewards, ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 280, repeats * 145 + 35);
+        if (multiplier >= 25d) tone(mechanics, ToneGenerator.TONE_DTMF_0, 650, 70);
+    }
+
+    private void barSequence(int count, double multiplier) {
+        for (int i = 0; i < Math.max(3, count); i++) {
+            tone(mechanics, i % 2 == 0 ? ToneGenerator.TONE_DTMF_1 : ToneGenerator.TONE_DTMF_4,
+                    92, i * 118);
+            tone(ui, ToneGenerator.TONE_PROP_ACK, 50, i * 118 + 40);
+        }
+        tone(mechanics, ToneGenerator.TONE_DTMF_0, multiplier >= 25d ? 720 : 420, 35);
+        tone(rewards, ToneGenerator.TONE_PROP_PROMPT, 180, 520);
+    }
+
+    private void sevenSequence(int count, double multiplier) {
+        int[] rise = {ToneGenerator.TONE_DTMF_1, ToneGenerator.TONE_DTMF_3,
+                ToneGenerator.TONE_DTMF_6, ToneGenerator.TONE_DTMF_9,
+                ToneGenerator.TONE_SUP_CONFIRM};
+        for (int i = 0; i < rise.length; i++) {
+            tone(rewards, rise[i], 104, i * 95);
+        }
+        tone(mechanics, ToneGenerator.TONE_DTMF_5, multiplier >= 25d ? 760 : 430, 18);
+        tone(ui, ToneGenerator.TONE_PROP_ACK, 170, 470);
+        if (count >= 5) tone(rewards, ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 260, 650);
+    }
+
+    private void diamondSequence(int count, double multiplier) {
+        int[] prism = {ToneGenerator.TONE_DTMF_3, ToneGenerator.TONE_DTMF_6,
+                ToneGenerator.TONE_DTMF_9, ToneGenerator.TONE_PROP_ACK};
+        for (int i = 0; i < prism.length; i++) {
+            tone(rewards, prism[i], 85 + i * 8, i * 108);
+        }
+        tone(ui, ToneGenerator.TONE_PROP_BEEP2, 62, 55);
+        if (count >= 5 || multiplier >= 25d) {
+            tone(rewards, ToneGenerator.TONE_SUP_CONFIRM, 220, 470);
+        }
+    }
+
+    private void wildSequence(int count, double multiplier) {
+        int[] crown = {ToneGenerator.TONE_DTMF_1, ToneGenerator.TONE_DTMF_3,
+                ToneGenerator.TONE_DTMF_6, ToneGenerator.TONE_DTMF_9,
+                ToneGenerator.TONE_PROP_ACK, ToneGenerator.TONE_SUP_CONFIRM};
+        for (int i = 0; i < crown.length; i++) {
+            tone(rewards, crown[i], 118, i * 120);
+        }
+        tone(mechanics, ToneGenerator.TONE_DTMF_0, multiplier >= 100d ? 1100 : 720, 35);
+        tone(ui, ToneGenerator.TONE_PROP_PROMPT, 240, 520);
+        if (count >= 5) tone(rewards, ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 320, 780);
+    }
+
+    private void genericWin(double multiplier) {
         if (multiplier >= 20) {
             int[] melody = {ToneGenerator.TONE_DTMF_1, ToneGenerator.TONE_DTMF_3,
                     ToneGenerator.TONE_DTMF_6, ToneGenerator.TONE_DTMF_9,
