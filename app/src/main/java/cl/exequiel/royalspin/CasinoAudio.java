@@ -113,6 +113,10 @@ public final class CasinoAudio {
         }, Math.max(0, delayMs));
     }
 
+    public void pause() {
+        stopAll();
+    }
+
     private void stopAll() {
         handler.removeCallbacksAndMessages(null);
         if (interfaceBus != null) interfaceBus.stopTone();
