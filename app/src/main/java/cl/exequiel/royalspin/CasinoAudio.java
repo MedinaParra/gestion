@@ -5,135 +5,101 @@ import android.media.ToneGenerator;
 import android.os.Handler;
 import android.os.Looper;
 
-/**
- * Synthesized three-bus audio layer. It keeps the prototype self-contained while allowing
- * interface, reel and reward sounds to overlap without external licensing risk.
- */
+/** Self-contained three-bus synthesized audio layer. */
 public final class CasinoAudio {
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private ToneGenerator interfaceBus;
-    private ToneGenerator reelBus;
-    private ToneGenerator rewardBus;
+    private ToneGenerator ui;
+    private ToneGenerator reels;
+    private ToneGenerator rewards;
     private boolean enabled;
+    private final int featureLevel;
 
-    public CasinoAudio(boolean enabled) {
+    public CasinoAudio(boolean enabled, int featureLevel) {
         this.enabled = enabled;
-        interfaceBus = new ToneGenerator(AudioManager.STREAM_MUSIC, 58);
-        reelBus = new ToneGenerator(AudioManager.STREAM_MUSIC, 66);
-        rewardBus = new ToneGenerator(AudioManager.STREAM_MUSIC, 78);
+        this.featureLevel = featureLevel;
+        ui = new ToneGenerator(AudioManager.STREAM_MUSIC, 58);
+        reels = new ToneGenerator(AudioManager.STREAM_MUSIC, 68);
+        rewards = new ToneGenerator(AudioManager.STREAM_MUSIC, 76);
     }
 
     public void setEnabled(boolean value) {
         enabled = value;
-        if (!enabled) stopAll();
+        if (!enabled) stopRewardSequence();
     }
 
-    public boolean isEnabled() {
-        return enabled;
-    }
+    public boolean isEnabled() { return enabled; }
 
-    public void playTap() {
-        beep(interfaceBus, ToneGenerator.TONE_PROP_BEEP2, 45, 0);
-    }
-
-    public void playError() {
-        beep(interfaceBus, ToneGenerator.TONE_PROP_NACK, 165, 0);
-    }
+    public void playTap() { tone(ui, ToneGenerator.TONE_PROP_BEEP2, 48, 0); }
+    public void playError() { tone(ui, ToneGenerator.TONE_PROP_NACK, 150, 0); }
 
     public void playSpinStart() {
-        beep(reelBus, ToneGenerator.TONE_PROP_PROMPT, 85, 0);
-        beep(reelBus, ToneGenerator.TONE_DTMF_2, 70, 105);
-        beep(reelBus, ToneGenerator.TONE_DTMF_5, 70, 205);
-        beep(reelBus, ToneGenerator.TONE_DTMF_8, 90, 305);
+        tone(reels, ToneGenerator.TONE_DTMF_1, 75, 0);
+        tone(reels, ToneGenerator.TONE_DTMF_2, 75, 95);
+        tone(reels, ToneGenerator.TONE_DTMF_5, 85, 190);
+        if (featureLevel >= 6) {
+            tone(ui, ToneGenerator.TONE_PROP_PROMPT, 120, 20);
+            tone(rewards, ToneGenerator.TONE_DTMF_8, 90, 275);
+        }
     }
 
     public void playReelStop(int reel) {
-        int[] tones = {
-                ToneGenerator.TONE_DTMF_1,
-                ToneGenerator.TONE_DTMF_2,
-                ToneGenerator.TONE_DTMF_3,
-                ToneGenerator.TONE_DTMF_6,
-                ToneGenerator.TONE_DTMF_9
-        };
+        int[] tones = {ToneGenerator.TONE_DTMF_1, ToneGenerator.TONE_DTMF_2,
+                ToneGenerator.TONE_DTMF_3, ToneGenerator.TONE_DTMF_6,
+                ToneGenerator.TONE_DTMF_9};
         int index = Math.max(0, Math.min(tones.length - 1, reel));
-        beep(reelBus, tones[index], 72 + index * 3, 0);
-        beep(interfaceBus, ToneGenerator.TONE_PROP_BEEP2, 32, 22);
-    }
-
-    public void playLineAccent(int lineIndex) {
-        int[] accents = {
-                ToneGenerator.TONE_DTMF_3,
-                ToneGenerator.TONE_DTMF_6,
-                ToneGenerator.TONE_DTMF_9
-        };
-        beep(rewardBus, accents[Math.floorMod(lineIndex, accents.length)], 62, 0);
-    }
-
-    public void playCountTick(int step) {
-        int tone = step % 3 == 0 ? ToneGenerator.TONE_DTMF_9 : ToneGenerator.TONE_DTMF_6;
-        beep(rewardBus, tone, 35, 0);
+        tone(reels, tones[index], 68 + reel * 5, 0);
+        if (featureLevel >= 6 && reel >= 3) tone(ui, ToneGenerator.TONE_PROP_BEEP2, 42, 24);
     }
 
     public void playLose() {
-        beep(rewardBus, ToneGenerator.TONE_PROP_BEEP, 75, 0);
-        beep(rewardBus, ToneGenerator.TONE_PROP_NACK, 105, 105);
+        tone(ui, ToneGenerator.TONE_PROP_BEEP, 80, 0);
+        tone(reels, ToneGenerator.TONE_PROP_NACK, 100, 105);
     }
 
     public void playWin(double multiplier) {
-        final int[] tones;
-        final int duration;
-        final int spacing;
-        if (multiplier >= 20d) {
-            tones = new int[]{ToneGenerator.TONE_DTMF_1, ToneGenerator.TONE_DTMF_3,
+        stopRewardSequence();
+        if (multiplier >= 20) {
+            int[] seq = {ToneGenerator.TONE_DTMF_1, ToneGenerator.TONE_DTMF_3,
                     ToneGenerator.TONE_DTMF_6, ToneGenerator.TONE_DTMF_9,
-                    ToneGenerator.TONE_PROP_ACK, ToneGenerator.TONE_PROP_PROMPT};
-            duration = 112;
-            spacing = 128;
-        } else if (multiplier >= 5d) {
-            tones = new int[]{ToneGenerator.TONE_DTMF_3, ToneGenerator.TONE_DTMF_6,
+                    ToneGenerator.TONE_PROP_ACK, ToneGenerator.TONE_SUP_CONFIRM};
+            for (int i = 0; i < seq.length; i++) tone(rewards, seq[i], 110, i * 122);
+            if (featureLevel >= 6) {
+                tone(reels, ToneGenerator.TONE_DTMF_5, 500, 40);
+                tone(ui, ToneGenerator.TONE_PROP_PROMPT, 220, 520);
+            }
+        } else if (multiplier >= 5) {
+            int[] seq = {ToneGenerator.TONE_DTMF_3, ToneGenerator.TONE_DTMF_6,
                     ToneGenerator.TONE_DTMF_9, ToneGenerator.TONE_PROP_ACK};
-            duration = 98;
-            spacing = 116;
+            for (int i = 0; i < seq.length; i++) tone(rewards, seq[i], 95, i * 112);
         } else {
-            tones = new int[]{ToneGenerator.TONE_DTMF_6, ToneGenerator.TONE_PROP_ACK};
-            duration = 82;
-            spacing = 100;
-        }
-        int delay = 0;
-        for (int tone : tones) {
-            beep(rewardBus, tone, duration, delay);
-            delay += spacing;
+            tone(rewards, ToneGenerator.TONE_DTMF_6, 90, 0);
+            tone(rewards, ToneGenerator.TONE_PROP_ACK, 105, 118);
         }
     }
 
-    private void beep(ToneGenerator generator, int tone, int durationMs, int delayMs) {
+    public void stopRewardSequence() {
+        handler.removeCallbacksAndMessages(null);
+        stop(ui); stop(reels); stop(rewards);
+    }
+
+    private void tone(ToneGenerator generator, int tone, int durationMs, int delayMs) {
         if (!enabled || generator == null) return;
         handler.postDelayed(() -> {
             if (enabled && generator != null) generator.startTone(tone, durationMs);
-        }, Math.max(0, delayMs));
+        }, delayMs);
     }
 
-    public void pause() {
-        stopAll();
-    }
-
-    private void stopAll() {
-        handler.removeCallbacksAndMessages(null);
-        if (interfaceBus != null) interfaceBus.stopTone();
-        if (reelBus != null) reelBus.stopTone();
-        if (rewardBus != null) rewardBus.stopTone();
+    private void stop(ToneGenerator generator) {
+        if (generator != null) generator.stopTone();
     }
 
     public void release() {
-        stopAll();
-        ToneGenerator ui = interfaceBus;
-        ToneGenerator reels = reelBus;
-        ToneGenerator rewards = rewardBus;
-        interfaceBus = null;
-        reelBus = null;
-        rewardBus = null;
-        if (ui != null) ui.release();
-        if (reels != null) reels.release();
-        if (rewards != null) rewards.release();
+        stopRewardSequence();
+        release(ui); release(reels); release(rewards);
+        ui = reels = rewards = null;
+    }
+
+    private void release(ToneGenerator generator) {
+        if (generator != null) generator.release();
     }
 }
