@@ -2,11 +2,13 @@ package cl.exequiel.royalspin;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.graphics.BlurMaskFilter;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.RadialGradient;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.Typeface;
@@ -16,668 +18,641 @@ import android.view.MotionEvent;
 import android.view.View;
 
 import java.text.NumberFormat;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Random;
 
 /**
- * Audiovisual 5x3 slot presentation. StakeSlotEngine fixes every outcome before this view
- * starts animating; presentation, audio and haptics never alter the mathematical result.
+ * Royal Spin visual client. StakeSlotEngine remains the sole source of outcomes.
+ * FEATURE_LEVEL is advanced in traceable iterations from v0.4 to v0.8.
  */
-public final class SlotView extends View implements Choreographer.FrameCallback,
-        AnimationTimeline.Listener {
+public final class SlotView extends View implements Choreographer.FrameCallback {
+    public static final int FEATURE_LEVEL = 4;
+    public static final String VERSION_LABEL = "v0.4 · REEL SPECTACLE";
+
     private enum Phase { IDLE, SPINNING, REVEALING }
 
-    private static final int EVENT_REEL_STOP = 1;
-    private static final int EVENT_SETTLE_RESULT = 2;
-    private static final int EVENT_REVEAL_RESULT = 3;
-    private static final int EVENT_LINE_ACCENT = 4;
-    private static final int EVENT_COMPLETE = 5;
+    private static final float W = 360f, H = 800f;
+    private static final float REEL_LEFT = 20f, REEL_TOP = 183f;
+    private static final float REEL_W = 60f, REEL_GAP = 4f, CELL_H = 84f;
+    private static final long[] STOP = {920L, 1210L, 1520L, 1860L, 2220L};
+    private static final long REVEAL_MS = 4300L;
 
-    private static final float DESIGN_WIDTH = 360f;
-    private static final float DESIGN_HEIGHT = 800f;
-    private static final float REEL_LEFT = 20f;
-    private static final float REEL_TOP = 176f;
-    private static final float REEL_WIDTH = 60f;
-    private static final float REEL_GAP = 4f;
-    private static final float CELL_HEIGHT = 86f;
-    private static final long[] REEL_STOP_MS = {900L, 1180L, 1480L, 1810L, 2170L};
-
-    private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path = new Path();
     private final Random random = new Random();
+    private final Random visualRandom = new Random(0x51A7C0DEL);
     private final StakeSlotEngine engine = new StakeSlotEngine();
-    private final SharedPreferences preferences;
-    private final NumberFormat numberFormat = NumberFormat.getIntegerInstance(new Locale("es", "CL"));
+    private final SharedPreferences prefs;
+    private final NumberFormat numbers = NumberFormat.getIntegerInstance(new Locale("es", "CL"));
     private final CasinoAudio audio;
     private final HapticEngine haptics;
-    private final AnimationTimeline timeline = new AnimationTimeline();
-    private final ParticleField particles = new ParticleField();
-    private final FrameStats frameStats = new FrameStats();
-    private final Choreographer choreographer;
+    private final List<Particle> particles = new ArrayList<>();
+    private final boolean[] stopTriggered = new boolean[StakeSlotEngine.REEL_COUNT];
 
-    private StakeSlotEngine.SpinResult currentResult;
-    private StakeSlotEngine.SpinResult pendingResult;
+    private StakeSlotEngine.SpinResult current;
+    private StakeSlotEngine.SpinResult pending;
     private Phase phase = Phase.IDLE;
-    private long spinStartedAt;
-    private long revealStartedAt;
-    private long renderNowMs;
-    private long flashUntilMs;
-    private long lastImpactAtMs;
-    private long lastCoinTickAtMs;
-    private long lastCelebrationBurstAtMs;
-    private final long[] reelStoppedAt = new long[StakeSlotEngine.REEL_COUNT];
-    private boolean payoutApplied;
-    private boolean attached;
-    private boolean frameCallbackPosted;
-
+    private long phaseStart;
+    private long previousFrameNanos;
+    private long fpsWindowNanos;
+    private int fpsFrames;
+    private int fps = 60;
+    private int slowFrames;
+    private int totalFrames;
+    private float frameDt = 1f / 60f;
+    private float scale = 1f, offsetX, offsetY;
     private int credits;
     private int betPerLine;
     private int lastWin;
     private int displayedWin;
-    private int spinsPlayed;
+    private int rounds;
+    private boolean payoutApplied;
+    private boolean rewardTriggered;
+    private boolean soundEnabled;
+    private boolean hapticEnabled;
+    private boolean reducedMotion;
+    private boolean frameLoop;
+    private boolean autoDemo;
     private String message = "20 líneas activas · toca GIRAR";
 
-    private float scale = 1f;
-    private float offsetX;
-    private float offsetY;
-
     public SlotView(Context context) {
+        this(context, null);
+    }
+
+    public SlotView(Context context, String demoMode) {
         super(context);
-        preferences = context.getSharedPreferences("royal_spin_stake_slot", Context.MODE_PRIVATE);
-        credits = preferences.getInt("credits", 2500);
-        betPerLine = StakeSlotEngine.clampBet(preferences.getInt("bet_per_line", 1));
-        spinsPlayed = preferences.getInt("spins_played", 0);
-        boolean soundEnabled = preferences.getBoolean("sound_enabled", true);
-        boolean hapticEnabled = preferences.getBoolean("haptic_enabled", true);
-        audio = new CasinoAudio(soundEnabled);
+        prefs = context.getSharedPreferences("royal_spin_visual", Context.MODE_PRIVATE);
+        credits = prefs.getInt("credits", 2500);
+        betPerLine = StakeSlotEngine.clampBet(prefs.getInt("bet", 1));
+        rounds = prefs.getInt("rounds", 0);
+        soundEnabled = prefs.getBoolean("sound", true);
+        hapticEnabled = prefs.getBoolean("haptic", true);
+        reducedMotion = prefs.getBoolean("reduced_motion", false);
+        audio = new CasinoAudio(soundEnabled, FEATURE_LEVEL);
         haptics = new HapticEngine(context, hapticEnabled);
-        currentResult = engine.spin(new Random(20260722L), betPerLine);
-        choreographer = Choreographer.getInstance();
-        paint.setStrokeCap(Paint.Cap.ROUND);
-        setFocusable(true);
+        current = engine.spin(new Random(20260723L), betPerLine);
+        autoDemo = "bigwin".equals(demoMode);
+        setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+        p.setStrokeCap(Paint.Cap.ROUND);
+        p.setStrokeJoin(Paint.Join.ROUND);
+        if (autoDemo) postDelayed(() -> startSpin(true), 500L);
     }
 
-    @Override
-    protected void onAttachedToWindow() {
+    @Override protected void onAttachedToWindow() {
         super.onAttachedToWindow();
-        attached = true;
-        if (needsFrames()) requestFrameLoop();
+        frameLoop = true;
+        previousFrameNanos = 0L;
+        Choreographer.getInstance().postFrameCallback(this);
     }
 
-    @Override
-    protected void onDetachedFromWindow() {
-        attached = false;
-        if (frameCallbackPosted) choreographer.removeFrameCallback(this);
-        frameCallbackPosted = false;
-        frameStats.resetClock();
+    @Override protected void onDetachedFromWindow() {
+        frameLoop = false;
+        Choreographer.getInstance().removeFrameCallback(this);
         super.onDetachedFromWindow();
     }
 
-    @Override
-    public void doFrame(long frameTimeNanos) {
-        frameCallbackPosted = false;
-        float deltaSeconds = frameStats.record(frameTimeNanos);
-        renderNowMs = frameTimeNanos / 1_000_000L;
-        timeline.dispatch(renderNowMs, this);
-        updateContinuousAnimation(renderNowMs);
-        particles.update(deltaSeconds);
+    @Override public void doFrame(long frameTimeNanos) {
+        if (!frameLoop) return;
+        if (previousFrameNanos != 0L) {
+            long delta = frameTimeNanos - previousFrameNanos;
+            frameDt = Math.min(0.05f, delta / 1_000_000_000f);
+            totalFrames++;
+            if (delta > 22_000_000L) slowFrames++;
+        }
+        previousFrameNanos = frameTimeNanos;
+        if (fpsWindowNanos == 0L) fpsWindowNanos = frameTimeNanos;
+        fpsFrames++;
+        if (frameTimeNanos - fpsWindowNanos >= 1_000_000_000L) {
+            fps = fpsFrames;
+            fpsFrames = 0;
+            fpsWindowNanos = frameTimeNanos;
+        }
+        update(SystemClock.uptimeMillis());
         invalidate();
-        if (needsFrames()) requestFrameLoop();
+        Choreographer.getInstance().postFrameCallback(this);
     }
 
-    private void requestFrameLoop() {
-        if (!attached || frameCallbackPosted) return;
-        frameCallbackPosted = true;
-        choreographer.postFrameCallback(this);
+    private void update(long now) {
+        updateParticles(now);
+        if (phase == Phase.SPINNING) {
+            long elapsed = now - phaseStart;
+            for (int reel = 0; reel < STOP.length; reel++) {
+                if (!stopTriggered[reel] && elapsed >= STOP[reel]) {
+                    stopTriggered[reel] = true;
+                    audio.playReelStop(reel);
+                    haptics.reelStop(reel);
+                    spawnImpact(reel, now);
+                }
+            }
+            if (elapsed >= STOP[4] + 170L) settleResult(now);
+        } else if (phase == Phase.REVEALING) {
+            long elapsed = now - phaseStart;
+            float progress = clamp(elapsed / 1150f);
+            displayedWin = Math.round(lastWin * easeOut(progress));
+            if (!rewardTriggered && elapsed > 130L) {
+                rewardTriggered = true;
+                if (lastWin > 0) {
+                    audio.playWin(current.payoutMultiplier());
+                    haptics.win(current.payoutMultiplier());
+                    spawnCelebration(now, current.payoutMultiplier());
+                } else audio.playLose();
+            }
+            if (elapsed >= (lastWin > 0 ? REVEAL_MS : 1100L)) finishRound();
+        }
     }
 
-    private boolean needsFrames() {
-        return phase != Phase.IDLE || timeline.isRunning() || particles.hasParticles()
-                || renderNowMs < flashUntilMs;
+    private void settleResult(long now) {
+        if (pending == null) return;
+        current = pending;
+        pending = null;
+        lastWin = current.totalPayout;
+        displayedWin = 0;
+        if (!payoutApplied) {
+            credits += lastWin;
+            payoutApplied = true;
+            save();
+        }
+        phase = Phase.REVEALING;
+        phaseStart = now;
+        rewardTriggered = false;
+        message = lastWin > 0 ? "PREMIO REAL · revelando líneas" : "Resultado cerrado · sin premio";
     }
 
-    @Override
-    protected void onDraw(Canvas canvas) {
+    private void finishRound() {
+        displayedWin = lastWin;
+        phase = Phase.IDLE;
+        if (lastWin > 0) {
+            message = "Ganaste " + numbers.format(lastWin) + " CR · "
+                    + formatMultiplier(current.payoutMultiplier()) + "x";
+        } else message = "Sin premio · cada giro es independiente";
+    }
+
+    @Override protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
-        long now = renderNowMs > 0L ? renderNowMs : SystemClock.uptimeMillis();
-        scale = Math.min(getWidth() / DESIGN_WIDTH, getHeight() / DESIGN_HEIGHT);
-        offsetX = (getWidth() - DESIGN_WIDTH * scale) / 2f;
-        offsetY = (getHeight() - DESIGN_HEIGHT * scale) / 2f;
-
+        long now = SystemClock.uptimeMillis();
+        scale = Math.min(getWidth() / W, getHeight() / H);
+        offsetX = (getWidth() - W * scale) / 2f;
+        offsetY = (getHeight() - H * scale) / 2f;
         canvas.save();
         canvas.translate(offsetX, offsetY);
         canvas.scale(scale, scale);
         drawBackground(canvas, now);
         drawHeader(canvas);
-        drawReelMachine(canvas, now);
+        drawMachine(canvas, now);
+        drawParticles(canvas, now);
         drawControls(canvas);
-        particles.draw(canvas, paint);
-        drawFlash(canvas, now);
         canvas.restore();
     }
 
-    @Override
-    public void onTimelineEvent(int type, int argument, long scheduledAtMs) {
-        if (type == EVENT_REEL_STOP) {
-            int reel = Math.max(0, Math.min(StakeSlotEngine.REEL_COUNT - 1, argument));
-            reelStoppedAt[reel] = scheduledAtMs;
-            lastImpactAtMs = scheduledAtMs;
-            audio.playReelStop(reel);
-            haptics.reelStop(reel);
-            float centerX = REEL_LEFT + reel * (REEL_WIDTH + REEL_GAP) + REEL_WIDTH / 2f;
-            particles.burst(centerX, REEL_TOP + CELL_HEIGHT * 3f - 4f,
-                    13 + reel * 2, 0xFFF6C453, 0.58f + reel * 0.08f);
-        } else if (type == EVENT_SETTLE_RESULT) {
-            settlePendingResult(scheduledAtMs);
-        } else if (type == EVENT_REVEAL_RESULT) {
-            revealResult(scheduledAtMs);
-        } else if (type == EVENT_LINE_ACCENT) {
-            if (currentResult != null && !currentResult.lineWins.isEmpty()) {
-                int index = Math.floorMod(argument, currentResult.lineWins.size());
-                audio.playLineAccent(currentResult.lineWins.get(index).lineIndex);
-                particles.burst(180f, 327f, 12, 0xFFFFE8A5, 0.72f);
+    private void drawBackground(Canvas c, long now) {
+        p.setShader(new LinearGradient(0, 0, 0, H,
+                new int[]{0xFF03040C, 0xFF10102A, 0xFF160A28, 0xFF03050B},
+                new float[]{0f, .34f, .68f, 1f}, Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, W, H, p);
+        p.setShader(null);
+        float t = now * 0.00012f;
+        for (int i = 0; i < 44; i++) {
+            float x = (i * 83.7f + (float)Math.sin(t + i) * 24f + 400f) % 360f;
+            float y = (i * 137.3f + (float)Math.cos(t * .8f + i) * 35f + 900f) % 800f;
+            int alpha = 24 + (i % 5) * 7;
+            p.setColor((alpha << 24) | (i % 4 == 0 ? 0xF6C453 : 0x7358FF));
+            c.drawCircle(x, y, i % 6 == 0 ? 1.8f : .9f, p);
+        }
+        p.setShader(new RadialGradient(180, 285, 250,
+                new int[]{0x285B35FF, 0x102C0F6A, 0x00000000}, null, Shader.TileMode.CLAMP));
+        c.drawCircle(180, 285, 250, p);
+        p.setShader(null);
+    }
+
+    private void drawHeader(Canvas c) {
+        crown(c, 180, 27, 20, 0xFFF6C453);
+        text(c, "ROYAL SPIN", 180, 62, 26, 0xFFF6C453, true, Paint.Align.CENTER);
+        text(c, VERSION_LABEL, 180, 79, 8, 0xFFAAB0C0, true, Paint.Align.CENTER);
+        button(c, 12, 22, 74, 52, "RESET", 0xC8242935, 0xFFE6E8EE, 8);
+        button(c, 286, 22, 348, 52, soundEnabled ? "SFX ON" : "SFX OFF",
+                soundEnabled ? 0xFF513714 : 0xFF242936,
+                soundEnabled ? 0xFFF6C453 : 0xFF8E95A4, 8);
+        panel(c, 14, 91, 346, 150, 17, 0xE9090D17, 0xFF7F5C1C);
+        text(c, "SALDO", 31, 113, 8, 0xFF8F97A8, true, Paint.Align.LEFT);
+        text(c, numbers.format(credits) + " CR", 31, 139, 21, Color.WHITE, true, Paint.Align.LEFT);
+        text(c, "RTP", 238, 113, 8, 0xFF8F97A8, true, Paint.Align.CENTER);
+        text(c, "95,48%", 238, 139, 16, 0xFFF6C453, true, Paint.Align.CENTER);
+        text(c, "RONDA " + rounds, 330, 139, 8, 0xFF8F97A8, true, Paint.Align.RIGHT);
+    }
+
+    private void drawMachine(Canvas c, long now) {
+        float shakeX = 0f, shakeY = 0f;
+        if (!reducedMotion && phase == Phase.SPINNING) {
+            long e = now - phaseStart;
+            for (int r = 0; r < STOP.length; r++) {
+                float d = Math.abs(e - STOP[r]);
+                if (d < 110f) {
+                    float amp = (1f - d / 110f) * (1.1f + r * .18f);
+                    shakeX += (float)Math.sin(e * .18f + r) * amp;
+                    shakeY += (float)Math.cos(e * .23f + r) * amp * .55f;
+                }
             }
-        } else if (type == EVENT_COMPLETE) {
-            completeRound();
         }
-    }
+        c.save();
+        c.translate(shakeX, shakeY);
+        // Outer shadow and bevels.
+        p.setShadowLayer(22, 0, 9, 0xCC000000);
+        p.setShader(new LinearGradient(12, 160, 348, 490,
+                new int[]{0xFF5A3B12, 0xFFFFDC79, 0xFF50320C, 0xFFC98A24},
+                null, Shader.TileMode.MIRROR));
+        c.drawRoundRect(new RectF(11, 160, 349, 490), 27, 27, p);
+        p.clearShadowLayer();
+        p.setShader(null);
+        panel(c, 16, 165, 344, 485, 23, 0xFF090D17, 0xFFFFD76B);
+        panel(c, 20, 171, 340, 451, 17, 0xFFEEE7D6, 0xFF5A6070);
 
-    private void settlePendingResult(long now) {
-        if (pendingResult == null) return;
-        currentResult = pendingResult;
-        pendingResult = null;
-        lastWin = currentResult.totalPayout;
-        if (!payoutApplied) {
-            credits += lastWin;
-            payoutApplied = true;
-        }
-        displayedWin = 0;
-        phase = Phase.REVEALING;
-        revealStartedAt = now;
-        lastCoinTickAtMs = 0L;
-        lastCelebrationBurstAtMs = 0L;
-        saveState();
-    }
+        // Top and bottom metallic lips create depth.
+        p.setShader(new LinearGradient(0, 171, 0, 196,
+                new int[]{0xFFFFFFFF, 0xFF9D9686, 0x00FFFFFF}, null, Shader.TileMode.CLAMP));
+        c.drawRoundRect(new RectF(20, 171, 340, 210), 15, 15, p);
+        p.setShader(new LinearGradient(0, 416, 0, 451,
+                new int[]{0x00FFFFFF, 0xFF8A8374, 0xFFFFFFFF}, null, Shader.TileMode.CLAMP));
+        c.drawRoundRect(new RectF(20, 410, 340, 451), 15, 15, p);
+        p.setShader(null);
 
-    private void revealResult(long now) {
-        if (currentResult == null) return;
-        double multiplier = currentResult.payoutMultiplier();
-        if (lastWin > 0) {
-            audio.playWin(multiplier);
-            haptics.win(multiplier);
-            particles.celebration(180f, 345f, multiplier);
-            flashUntilMs = now + (multiplier >= 20d ? 520L : multiplier >= 5d ? 330L : 190L);
-            message = multiplier >= 20d ? "GRAN PREMIO · contando créditos"
-                    : "Premio confirmado · contando créditos";
-        } else {
-            audio.playLose();
-            message = "Sin premio · cada giro es independiente";
-        }
-    }
-
-    private void completeRound() {
-        displayedWin = lastWin;
-        phase = Phase.IDLE;
-        if (lastWin > 0) {
-            message = "Ganaste " + numberFormat.format(lastWin) + " CR · "
-                    + formatMultiplier(currentResult.payoutMultiplier()) + "x";
-        } else {
-            message = "Sin premio · resultado independiente";
-        }
-        saveState();
-    }
-
-    private void updateContinuousAnimation(long now) {
-        if (phase != Phase.REVEALING || currentResult == null) return;
-        long elapsed = Math.max(0L, now - revealStartedAt);
-        long countDuration = lastWin >= 1000 ? 2100L : lastWin >= 250 ? 1550L : 950L;
-        float progress = Math.min(1f, elapsed / (float) countDuration);
-        float eased = 1f - (float) Math.pow(1f - progress, 3d);
-        int previous = displayedWin;
-        displayedWin = lastWin <= 0 ? 0 : Math.min(lastWin, Math.round(lastWin * eased));
-        if (displayedWin != previous && now - lastCoinTickAtMs >= 105L) {
-            lastCoinTickAtMs = now;
-            audio.playCountTick((int) (elapsed / 105L));
-        }
-        double multiplier = currentResult.payoutMultiplier();
-        if (lastWin > 0 && multiplier >= 5d && elapsed < 2100L
-                && now - lastCelebrationBurstAtMs >= 430L) {
-            lastCelebrationBurstAtMs = now;
-            particles.burst(45f + random.nextFloat() * 270f, 210f + random.nextFloat() * 190f,
-                    multiplier >= 20d ? 20 : 11, 0xFFF6C453, multiplier >= 20d ? 1.15f : 0.82f);
-        }
-    }
-
-    private void drawBackground(Canvas canvas, long now) {
-        paint.setShader(new LinearGradient(0, 0, 360, 800,
-                new int[]{0xFF02050B, 0xFF12102C, 0xFF06070E}, null, Shader.TileMode.CLAMP));
-        canvas.drawRect(0, 0, 360, 800, paint);
-        paint.setShader(null);
-
-        float movement = phase == Phase.IDLE ? 0f : (now - spinStartedAt) / 55f;
-        for (int i = 0; i < 40; i++) {
-            float x = Math.floorMod((int) (i * 83f + movement * (1 + i % 3)), 360);
-            float y = Math.floorMod((int) (i * 131f + movement * (1 + i % 4) * 0.42f), 800);
-            int alpha = 35 + (i % 5) * 9;
-            paint.setColor((i % 4 == 0 ? 0x00F6C453 : 0x005D70FF) | (alpha << 24));
-            canvas.drawCircle(x, y, i % 6 == 0 ? 1.8f : 1f, paint);
-        }
-
-        if (phase == Phase.REVEALING && lastWin > 0) {
-            float pulse = 0.5f + 0.5f * (float) Math.sin((now - revealStartedAt) / 115f);
-            paint.setStyle(Paint.Style.STROKE);
-            paint.setStrokeWidth(2f + pulse * 2f);
-            paint.setColor((0xFFF6C453 & 0x00FFFFFF) | ((int) (35 + 55 * pulse) << 24));
-            canvas.drawCircle(180f, 333f, 135f + pulse * 12f, paint);
-            paint.setStyle(Paint.Style.FILL);
-        }
-    }
-
-    private void drawHeader(Canvas canvas) {
-        crown(canvas, 180, 27, 21, 0xFFF6C453);
-        text(canvas, "ROYAL SPIN", 180, 64, 26, 0xFFF6C453, true, Paint.Align.CENTER);
-        text(canvas, "AUDIOVISUAL v0.3 · DEMO SIN DINERO REAL", 180, 81, 8,
-                0xFF9CA4B7, true, Paint.Align.CENTER);
-
-        button(canvas, 10, 23, 66, 54, "RESET", 0xFF242A38, 0xFFE8EAF0, 7);
-        button(canvas, 234, 23, 286, 54, haptics.isEnabled() ? "VIB ON" : "VIB OFF",
-                haptics.isEnabled() ? 0xFF243D35 : 0xFF242A38,
-                haptics.isEnabled() ? 0xFF65E6A4 : 0xFF9097A6, 7);
-        button(canvas, 290, 23, 350, 54, audio.isEnabled() ? "SFX ON" : "SFX OFF",
-                audio.isEnabled() ? 0xFF4A3413 : 0xFF242A38,
-                audio.isEnabled() ? 0xFFF6C453 : 0xFF9097A6, 7);
-
-        panel(canvas, 16, 96, 344, 151, 17, 0xE80A0E18, 0xFF8B651D);
-        text(canvas, "SALDO", 34, 118, 8, 0xFF9097A6, true, Paint.Align.LEFT);
-        text(canvas, numberFormat.format(credits) + " CR", 34, 141, 20, Color.WHITE, true, Paint.Align.LEFT);
-        text(canvas, "RTP TEÓRICO", 236, 118, 8, 0xFF9097A6, true, Paint.Align.CENTER);
-        text(canvas, "95,48%", 236, 141, 16, 0xFFF6C453, true, Paint.Align.CENTER);
-        text(canvas, "TIRADAS " + spinsPlayed, 331, 141, 7, 0xFF81899A, true, Paint.Align.RIGHT);
-    }
-
-    private void drawReelMachine(Canvas canvas, long now) {
-        float shakeX = 0f;
-        float shakeY = 0f;
-        long impactAge = now - lastImpactAtMs;
-        if (impactAge >= 0L && impactAge < 190L) {
-            float decay = 1f - impactAge / 190f;
-            shakeX = (float) Math.sin(impactAge * 0.18f) * 2.7f * decay;
-            shakeY = (float) Math.cos(impactAge * 0.22f) * 1.5f * decay;
-        }
-
-        canvas.save();
-        canvas.translate(shakeX, shakeY);
-        panel(canvas, 14, 162, 346, 478, 22, 0xF20A0E18, 0xFF8D6820);
-        paint.setColor(0xFFEEE8D8);
-        canvas.drawRoundRect(new RectF(18, 172, 342, 442), 16, 16, paint);
-
-        long elapsed = Math.max(0L, now - spinStartedAt);
+        long elapsed = phase == Phase.SPINNING ? now - phaseStart : 99999L;
+        StakeSlotEngine.SpinResult source = pending != null ? pending : current;
         for (int reel = 0; reel < StakeSlotEngine.REEL_COUNT; reel++) {
-            float left = REEL_LEFT + reel * (REEL_WIDTH + REEL_GAP);
-            RectF clip = new RectF(left, REEL_TOP, left + REEL_WIDTH, REEL_TOP + CELL_HEIGHT * 3f);
-            canvas.save();
-            canvas.clipRect(clip);
-
-            boolean spinning = phase == Phase.SPINNING && elapsed < REEL_STOP_MS[reel];
-            if (spinning) {
-                drawSpinningReel(canvas, reel, left, elapsed);
-            } else {
-                float bounce = reelBounce(reel, now);
-                canvas.translate(0f, bounce);
-                StakeSlotEngine.SpinResult source = phase == Phase.SPINNING && pendingResult != null
-                        ? pendingResult : currentResult;
-                drawStoppedReel(canvas, source, reel, left);
-            }
-            canvas.restore();
-
-            long stopAge = now - reelStoppedAt[reel];
-            boolean glowing = stopAge >= 0L && stopAge < 360L;
-            paint.setStyle(Paint.Style.STROKE);
-            paint.setStrokeWidth(glowing ? 2.5f : 1.2f);
-            paint.setColor(glowing || reel == 2 ? 0xFFF6C453 : 0xFF6B7180);
-            canvas.drawRoundRect(clip, 8, 8, paint);
-            paint.setStyle(Paint.Style.FILL);
+            float left = REEL_LEFT + reel * (REEL_W + REEL_GAP);
+            RectF clip = new RectF(left, REEL_TOP, left + REEL_W, REEL_TOP + CELL_H * 3);
+            c.save();
+            c.clipRoundRect(clip, 7, 7);
+            boolean spinning = phase == Phase.SPINNING && elapsed < STOP[reel];
+            if (spinning) drawSpinningReel(c, reel, left, elapsed);
+            else drawStoppedReel(c, source, reel, left, now);
+            drawReelShading(c, clip, spinning);
+            c.restore();
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(reel == 2 ? 2.3f : 1.15f);
+            p.setColor(reel == 2 ? 0xFFF6C453 : 0xFF656C7A);
+            c.drawRoundRect(clip, 7, 7, p);
+            p.setStyle(Paint.Style.FILL);
         }
-
-        drawActiveWinLine(canvas, now);
-        text(canvas, "3+ iguales desde la izquierda · ♛ sustituye · 20 líneas",
-                180, 463, 8, 0xFFAEB4C1, false, Paint.Align.CENTER);
-        canvas.restore();
+        drawWinLine(c, now);
+        text(c, "20 LÍNEAS · ♛ WILD · RESULTADO FIJADO ANTES DE ANIMAR", 180, 472,
+                7, 0xFFA7ADBA, true, Paint.Align.CENTER);
+        c.restore();
     }
 
-    private void drawSpinningReel(Canvas canvas, int reel, float left, long elapsed) {
-        float progress = Math.min(1f, elapsed / (float) REEL_STOP_MS[reel]);
-        float eased = easeInOutCubic(progress);
-        float turns = 8.5f + reel * 1.55f;
-        float distance = eased * turns * CELL_HEIGHT;
-        float travel = distance % CELL_HEIGHT;
-        int baseIndex = (int) (distance / CELL_HEIGHT) + reel * 4;
-
-        for (int item = -1; item <= 3; item++) {
-            int symbolIndex = Math.floorMod(baseIndex + item, StakeSlotEngine.SYMBOLS.length);
-            float top = REEL_TOP + item * CELL_HEIGHT + travel;
-            drawSymbolCell(canvas, left + 2, top + 2, REEL_WIDTH - 4, CELL_HEIGHT - 4,
-                    StakeSlotEngine.SYMBOLS[symbolIndex]);
+    private void drawSpinningReel(Canvas c, int reel, float left, long elapsed) {
+        float stop = STOP[reel];
+        float q = clamp(elapsed / stop);
+        float velocity = reducedMotion ? 0.55f : (0.38f + 1.75f * (float)Math.sin(Math.PI * Math.min(1f, q)));
+        float travel = (elapsed * velocity + reel * 31f) % CELL_H;
+        int base = (int)(elapsed / Math.max(28f, 62f - velocity * 13f)) + reel * 7;
+        for (int item = -2; item <= 4; item++) {
+            int index = Math.floorMod(base + item, StakeSlotEngine.SYMBOLS.length);
+            float top = REEL_TOP + item * CELL_H + travel;
+            drawSymbolCell(c, left + 2, top + 2, REEL_W - 4, CELL_H - 4,
+                    StakeSlotEngine.SYMBOLS[index], 1f, false, elapsed);
         }
+        if (!reducedMotion) {
+            p.setShader(new LinearGradient(left, REEL_TOP, left + REEL_W, REEL_TOP,
+                    new int[]{0x00FFFFFF, 0x55FFFFFF, 0x00FFFFFF}, null, Shader.TileMode.CLAMP));
+            for (int i = 0; i < 7; i++) {
+                float y = REEL_TOP + ((elapsed * (1.4f + i * .11f) + i * 43f) % (CELL_H * 3));
+                c.drawRoundRect(new RectF(left + 5, y, left + REEL_W - 5, y + 2.4f), 2, 2, p);
+            }
+            p.setShader(null);
+        }
+    }
 
-        if (progress > 0.12f && progress < 0.9f) {
-            paint.setColor(0x44FFFFFF);
-            for (int streak = 0; streak < 4; streak++) {
-                float x = left + 8f + streak * 14f;
-                canvas.drawRoundRect(new RectF(x, REEL_TOP + 18f, x + 2f,
-                        REEL_TOP + CELL_HEIGHT * 3f - 18f), 2f, 2f, paint);
+    private void drawStoppedReel(Canvas c, StakeSlotEngine.SpinResult result, int reel, float left, long now) {
+        float bounce = 0f;
+        if (phase == Phase.SPINNING || phase == Phase.REVEALING) {
+            float d = now - phaseStart - STOP[reel];
+            if (d >= 0 && d < 520 && !reducedMotion) {
+                bounce = (float)(Math.sin(d * .035) * Math.exp(-d / 155f) * 9.5f);
             }
         }
-    }
-
-    private float reelBounce(int reel, long now) {
-        long stopped = reelStoppedAt[reel];
-        if (stopped <= 0L) return 0f;
-        float age = now - stopped;
-        if (age < 0f || age > 420f) return 0f;
-        float decay = 1f - age / 420f;
-        return (float) Math.sin(age / 33f) * 8f * decay;
-    }
-
-    private float easeInOutCubic(float value) {
-        float x = Math.max(0f, Math.min(1f, value));
-        return x < 0.5f ? 4f * x * x * x
-                : 1f - (float) Math.pow(-2f * x + 2f, 3d) / 2f;
-    }
-
-    private void drawStoppedReel(Canvas canvas, StakeSlotEngine.SpinResult result,
-                                 int reel, float left) {
-        if (result == null) return;
         for (int row = 0; row < StakeSlotEngine.ROW_COUNT; row++) {
-            drawSymbolCell(canvas, left + 2, REEL_TOP + row * CELL_HEIGHT + 2,
-                    REEL_WIDTH - 4, CELL_HEIGHT - 4, result.board[reel][row]);
+            String symbol = result.board[reel][row];
+            drawSymbolCell(c, left + 2, REEL_TOP + row * CELL_H + 2 + bounce,
+                    REEL_W - 4, CELL_H - 4, symbol, 1f, isWinningCell(reel, row, now), now);
         }
     }
 
-    private void drawSymbolCell(Canvas canvas, float left, float top, float width,
-                                float height, String symbol) {
-        int symbolColor = StakeSlotEngine.symbolColor(symbol);
-        paint.setShader(new LinearGradient(left, top, left, top + height,
-                new int[]{0xFFFFFFFF, 0xFFF4EEDC, 0xFFE2DAC7}, null, Shader.TileMode.CLAMP));
-        canvas.drawRoundRect(new RectF(left, top, left + width, top + height), 7, 7, paint);
-        paint.setShader(null);
-
+    private void drawSymbolCell(Canvas c, float left, float top, float width, float height,
+                                String symbol, float alpha, boolean winning, long now) {
+        int color = StakeSlotEngine.symbolColor(symbol);
+        float pulse = winning ? 1f + .055f * (float)Math.sin(now * .012f) : 1f;
+        c.save();
+        c.scale(pulse, pulse, left + width / 2, top + height / 2);
+        if (winning) {
+            p.setShadowLayer(14, 0, 0, color);
+            p.setColor((color & 0x00FFFFFF) | 0x66000000);
+            c.drawRoundRect(new RectF(left - 2, top - 2, left + width + 2, top + height + 2), 10, 10, p);
+            p.clearShadowLayer();
+        }
+        p.setShader(new LinearGradient(left, top, left, top + height,
+                new int[]{0xFFFFFFFF, 0xFFF4EDDC, 0xFFD8D0C0}, null, Shader.TileMode.CLAMP));
+        c.drawRoundRect(new RectF(left, top, left + width, top + height), 7, 7, p);
+        p.setShader(null);
         if (StakeSlotEngine.WILD.equals(symbol)) {
-            paint.setColor(0x225F3A00);
-            canvas.drawCircle(left + width / 2f, top + height / 2f, width * 0.42f, paint);
+            crown(c, left + width / 2, top + height / 2 - 4, 25, color);
+            text(c, "WILD", left + width / 2, top + height - 12, 8, 0xFF5E3D0D, true, Paint.Align.CENTER);
+        } else if (StakeSlotEngine.DIAMOND.equals(symbol)) {
+            diamond(c, left + width / 2, top + height / 2, 21, color);
+        } else if (StakeSlotEngine.BELL.equals(symbol)) {
+            bell(c, left + width / 2, top + height / 2, 22, color);
+        } else {
+            String label = StakeSlotEngine.displayLabel(symbol);
+            float size = label.length() >= 4 ? 15 : label.length() >= 2 ? 23 : 34;
+            p.setShadowLayer(3, 0, 2, 0x55000000);
+            text(c, label, left + width / 2, top + height / 2 + size * .34f,
+                    size, color, true, Paint.Align.CENTER);
+            p.clearShadowLayer();
         }
-        String label = StakeSlotEngine.displayLabel(symbol);
-        float size = label.length() >= 4 ? 13f : label.length() >= 3 ? 18f : 31f;
-        text(canvas, label, left + width / 2f, top + height / 2f + size * 0.34f,
-                size, symbolColor, true, Paint.Align.CENTER);
+        c.restore();
     }
 
-    private void drawActiveWinLine(Canvas canvas, long now) {
-        if (phase != Phase.REVEALING || currentResult == null || currentResult.lineWins.isEmpty()) return;
-        long elapsed = Math.max(0L, now - revealStartedAt);
-        int index = (int) ((elapsed / 480L) % currentResult.lineWins.size());
-        StakeSlotEngine.LineWin win = currentResult.lineWins.get(index);
-        float pulse = 0.65f + 0.35f * (float) Math.sin(elapsed / 80f);
+    private void drawReelShading(Canvas c, RectF clip, boolean spinning) {
+        p.setShader(new LinearGradient(0, clip.top, 0, clip.bottom,
+                new int[]{0xAA000000, 0x00000000, 0x00000000, 0xAA000000},
+                new float[]{0f, .18f, .82f, 1f}, Shader.TileMode.CLAMP));
+        c.drawRect(clip, p);
+        p.setShader(null);
+        if (spinning) {
+            p.setColor(0x14FFFFFF);
+            c.drawRect(clip.left, clip.top, clip.right, clip.bottom, p);
+        }
+    }
 
+    private void drawWinLine(Canvas c, long now) {
+        if (phase != Phase.REVEALING || current.lineWins.isEmpty()) return;
+        int index = (int)(((now - phaseStart) / 620L) % current.lineWins.size());
+        StakeSlotEngine.LineWin win = current.lineWins.get(index);
         path.reset();
-        for (int reel = 0; reel < StakeSlotEngine.REEL_COUNT; reel++) {
-            float centerX = REEL_LEFT + reel * (REEL_WIDTH + REEL_GAP) + REEL_WIDTH / 2f;
-            float centerY = REEL_TOP + win.rows[reel] * CELL_HEIGHT + CELL_HEIGHT / 2f;
-            if (reel == 0) path.moveTo(centerX, centerY); else path.lineTo(centerX, centerY);
+        for (int reel = 0; reel < 5; reel++) {
+            float x = REEL_LEFT + reel * (REEL_W + REEL_GAP) + REEL_W / 2;
+            float y = REEL_TOP + win.rows[reel] * CELL_H + CELL_H / 2;
+            if (reel == 0) path.moveTo(x, y); else path.lineTo(x, y);
         }
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeWidth(3.5f + 2f * pulse);
-        paint.setColor(0xFFF6C453);
-        canvas.drawPath(path, paint);
-        for (int reel = 0; reel < win.count; reel++) {
-            float centerX = REEL_LEFT + reel * (REEL_WIDTH + REEL_GAP) + REEL_WIDTH / 2f;
-            float centerY = REEL_TOP + win.rows[reel] * CELL_HEIGHT + CELL_HEIGHT / 2f;
-            canvas.drawCircle(centerX, centerY, 26f + 3f * pulse, paint);
-        }
-        paint.setStyle(Paint.Style.FILL);
-        panel(canvas, 98, 405, 262, 435, 15, 0xEE171006, 0xFFF6C453);
-        text(canvas, "LÍNEA " + (win.lineIndex + 1) + " · +" + win.payout + " CR",
-                180, 425, 10, 0xFFFFE7A0, true, Paint.Align.CENTER);
+        p.setStyle(Paint.Style.STROKE);
+        p.setStrokeWidth(8);
+        p.setColor(0x44F6C453);
+        p.setMaskFilter(new BlurMaskFilter(10, BlurMaskFilter.Blur.NORMAL));
+        c.drawPath(path, p);
+        p.setMaskFilter(null);
+        p.setStrokeWidth(3.8f);
+        p.setColor(0xFFFFE287);
+        c.drawPath(path, p);
+        p.setStyle(Paint.Style.FILL);
+        panel(c, 91, 408, 269, 438, 15, 0xED160F05, 0xFFF6C453);
+        text(c, "LÍNEA " + (win.lineIndex + 1) + "  +" + numbers.format(win.payout) + " CR",
+                180, 428, 10, 0xFFFFE8A0, true, Paint.Align.CENTER);
     }
 
-    private void drawControls(Canvas canvas) {
-        panel(canvas, 16, 494, 344, 666, 20, 0xE80A0E18, 0xFF394052);
-        text(canvas, "APUESTA POR LÍNEA", 180, 520, 9, 0xFF9CA4B4, true, Paint.Align.CENTER);
-        button(canvas, 28, 536, 86, 590, "−", 0xFF252B39, Color.WHITE, 24);
-        panel(canvas, 103, 536, 257, 590, 15, 0xFF151B28, 0xFF8D6820);
-        text(canvas, numberFormat.format(betPerLine) + " CR", 180, 570, 22,
-                0xFFF6C453, true, Paint.Align.CENTER);
-        button(canvas, 274, 536, 332, 590, "+", 0xFF252B39, Color.WHITE, 24);
+    private boolean isWinningCell(int reel, int row, long now) {
+        if (phase != Phase.REVEALING || current == null || current.lineWins.isEmpty()) return false;
+        int index = (int)(((now - phaseStart) / 620L) % current.lineWins.size());
+        StakeSlotEngine.LineWin win = current.lineWins.get(index);
+        return reel < win.count && win.rows[reel] == row;
+    }
 
+    private void drawControls(Canvas c) {
+        panel(c, 15, 505, 345, 671, 21, 0xEA090D17, 0xFF343B4D);
+        text(c, "APUESTA POR LÍNEA", 180, 530, 9, 0xFF9AA2B3, true, Paint.Align.CENTER);
+        button(c, 26, 543, 82, 596, "−", 0xFF242A38, Color.WHITE, 24);
+        panel(c, 101, 543, 259, 596, 16, 0xFF111725, 0xFF85611D);
+        text(c, betPerLine + " CR", 180, 578, 22, 0xFFF6C453, true, Paint.Align.CENTER);
+        button(c, 278, 543, 334, 596, "+", 0xFF242A38, Color.WHITE, 24);
         int totalBet = betPerLine * StakeSlotEngine.LINE_COUNT;
-        int winToShow = phase == Phase.REVEALING ? displayedWin : lastWin;
-        text(canvas, "APUESTA TOTAL", 42, 615, 8, 0xFF8F97A8, true, Paint.Align.LEFT);
-        text(canvas, numberFormat.format(totalBet) + " CR", 42, 640, 16, Color.WHITE, true, Paint.Align.LEFT);
-        text(canvas, "ÚLTIMO PREMIO", 318, 615, 8, 0xFF8F97A8, true, Paint.Align.RIGHT);
-        text(canvas, numberFormat.format(winToShow) + " CR", 318, 640, 16,
-                winToShow > 0 ? 0xFFF6C453 : Color.WHITE, true, Paint.Align.RIGHT);
-
-        text(canvas, message, 180, 687, 10, 0xFFD8DBE3, true, Paint.Align.CENTER);
-        int buttonColor = phase == Phase.IDLE ? 0xFFF6C453 : 0xFF725E26;
-        String buttonText = phase == Phase.IDLE ? "GIRAR" : "OMITIR ANIMACIÓN";
-        button(canvas, 36, 704, 324, 762, buttonText, buttonColor,
-                phase == Phase.IDLE ? 0xFF161006 : 0xFFFFE9A8, 16);
-        text(canvas, frameStats.fps() + " FPS · lentos "
-                        + String.format(Locale.US, "%.1f", frameStats.slowFramePercent())
+        text(c, "APUESTA TOTAL", 35, 621, 8, 0xFF8F97A8, true, Paint.Align.LEFT);
+        text(c, numbers.format(totalBet) + " CR", 35, 646, 16, Color.WHITE, true, Paint.Align.LEFT);
+        text(c, "ÚLTIMO PREMIO", 325, 621, 8, 0xFF8F97A8, true, Paint.Align.RIGHT);
+        int winShown = phase == Phase.REVEALING ? displayedWin : lastWin;
+        text(c, numbers.format(winShown) + " CR", 325, 646, 16,
+                winShown > 0 ? 0xFFF6C453 : Color.WHITE, true, Paint.Align.RIGHT);
+        text(c, message, 180, 696, 10, 0xFFD9DCE4, true, Paint.Align.CENTER);
+        String label = phase == Phase.IDLE ? "GIRAR" : "OMITIR ANIMACIÓN";
+        int fill = phase == Phase.IDLE ? 0xFFF6C453 : 0xFF5B3E91;
+        button(c, 34, 711, 326, 766, label, fill,
+                phase == Phase.IDLE ? 0xFF171006 : Color.WHITE, 16);
+        float slow = totalFrames == 0 ? 0 : slowFrames * 100f / totalFrames;
+        text(c, "FPS " + fps + " · lentos " + String.format(Locale.US, "%.1f", slow)
                         + "% · créditos ficticios",
-                180, 788, 7, 0xFF727A8C, false, Paint.Align.CENTER);
+                180, 790, 7, 0xFF727A8C, false, Paint.Align.CENTER);
     }
 
-    private void drawFlash(Canvas canvas, long now) {
-        if (now >= flashUntilMs) return;
-        float remaining = Math.max(0f, Math.min(1f, (flashUntilMs - now) / 520f));
-        paint.setColor((0xFFFFE8A5 & 0x00FFFFFF) | ((int) (95f * remaining) << 24));
-        canvas.drawRect(0f, 0f, DESIGN_WIDTH, DESIGN_HEIGHT, paint);
-    }
-
-    @Override
-    public boolean onTouchEvent(MotionEvent event) {
+    @Override public boolean onTouchEvent(MotionEvent event) {
         if (event.getAction() != MotionEvent.ACTION_UP) return true;
         float x = (event.getX() - offsetX) / scale;
         float y = (event.getY() - offsetY) / scale;
-
-        if (x >= 290 && x <= 352 && y >= 18 && y <= 62) {
-            audio.setEnabled(!audio.isEnabled());
-            preferences.edit().putBoolean("sound_enabled", audio.isEnabled()).apply();
-            if (audio.isEnabled()) audio.playTap();
+        if (x > 280 && y < 65) {
+            soundEnabled = !soundEnabled;
+            audio.setEnabled(soundEnabled);
+            save();
             invalidate();
             return true;
         }
-        if (x >= 228 && x <= 288 && y >= 18 && y <= 62) {
-            haptics.setEnabled(!haptics.isEnabled());
-            preferences.edit().putBoolean("haptic_enabled", haptics.isEnabled()).apply();
-            if (haptics.isEnabled()) haptics.tap();
-            audio.playTap();
-            invalidate();
-            return true;
-        }
-        if (x >= 8 && x <= 72 && y >= 18 && y <= 62 && phase == Phase.IDLE) {
-            credits = 2500;
-            lastWin = 0;
-            displayedWin = 0;
+        if (x < 82 && y < 65 && phase == Phase.IDLE) {
+            credits = 2500; lastWin = displayedWin = rounds = 0;
             message = "Saldo demo reiniciado";
-            audio.playTap();
-            haptics.tap();
-            saveState();
-            invalidate();
+            audio.playTap(); haptics.tap(); save();
             return true;
         }
-
         if (phase != Phase.IDLE) {
-            if (y >= 690 && y <= 775) finishImmediately();
+            if (y > 695) skipAnimation();
             return true;
         }
-
-        if (y >= 526 && y <= 600 && x <= 100) {
+        if (y > 530 && y < 610 && x < 100) {
             betPerLine = StakeSlotEngine.clampBet(betPerLine - 1);
-            message = "Apuesta total: " + (betPerLine * StakeSlotEngine.LINE_COUNT) + " CR";
-            audio.playTap();
-            haptics.tap();
-            saveState();
-        } else if (y >= 526 && y <= 600 && x >= 260) {
+            audio.playTap(); haptics.tap(); save();
+        } else if (y > 530 && y < 610 && x > 260) {
             betPerLine = StakeSlotEngine.clampBet(betPerLine + 1);
-            message = "Apuesta total: " + (betPerLine * StakeSlotEngine.LINE_COUNT) + " CR";
-            audio.playTap();
-            haptics.tap();
-            saveState();
-        } else if (y >= 690 && y <= 775) {
-            startSpin();
-        }
-        invalidate();
+            audio.playTap(); haptics.tap(); save();
+        } else if (y > 690) startSpin(false);
         return true;
     }
 
-    private void startSpin() {
+    private void startSpin(boolean forcedBigWin) {
+        if (phase != Phase.IDLE) return;
         int totalBet = betPerLine * StakeSlotEngine.LINE_COUNT;
-        if (credits < totalBet) {
+        if (!forcedBigWin && credits < totalBet) {
             message = "Saldo insuficiente · pulsa RESET";
-            audio.playError();
-            haptics.error();
-            return;
+            audio.playError(); haptics.error(); return;
         }
-
-        credits -= totalBet;
-        pendingResult = engine.spin(random, betPerLine);
+        if (!forcedBigWin) credits -= totalBet;
+        pending = forcedBigWin ? createBigWin() : engine.spin(random, betPerLine);
         phase = Phase.SPINNING;
-        spinStartedAt = SystemClock.uptimeMillis();
-        renderNowMs = spinStartedAt;
-        revealStartedAt = 0L;
-        lastWin = 0;
-        displayedWin = 0;
-        payoutApplied = false;
-        spinsPlayed++;
-        flashUntilMs = 0L;
-        lastImpactAtMs = 0L;
+        phaseStart = SystemClock.uptimeMillis();
+        lastWin = displayedWin = 0;
+        payoutApplied = rewardTriggered = false;
         particles.clear();
-        for (int reel = 0; reel < reelStoppedAt.length; reel++) reelStoppedAt[reel] = 0L;
-
-        timeline.clear();
-        for (int reel = 0; reel < REEL_STOP_MS.length; reel++) {
-            timeline.add(REEL_STOP_MS[reel], EVENT_REEL_STOP, reel);
-        }
-        long settleAt = REEL_STOP_MS[REEL_STOP_MS.length - 1] + 180L;
-        timeline.add(settleAt, EVENT_SETTLE_RESULT, 0);
-        timeline.add(settleAt + 120L, EVENT_REVEAL_RESULT, 0);
-        int lineAccents = Math.min(4, pendingResult.lineWins.size());
-        for (int i = 0; i < lineAccents; i++) {
-            timeline.add(settleAt + 430L + i * 430L, EVENT_LINE_ACCENT, i);
-        }
-        double multiplier = pendingResult.payoutMultiplier();
-        long presentationDuration = pendingResult.totalPayout <= 0 ? 1100L
-                : multiplier >= 20d ? 5000L : multiplier >= 5d ? 3700L : 2600L;
-        timeline.add(settleAt + presentationDuration, EVENT_COMPLETE, 0);
-        timeline.start(spinStartedAt);
-
-        message = "Resultado fijado · coreografía en ejecución";
-        audio.playSpinStart();
-        haptics.tap();
-        saveState();
-        frameStats.resetClock();
-        requestFrameLoop();
+        for (int i = 0; i < stopTriggered.length; i++) stopTriggered[i] = false;
+        rounds++;
+        message = "Resultado calculado · coreografía en ejecución";
+        audio.playSpinStart(); haptics.tap(); save();
     }
 
-    private void finishImmediately() {
-        timeline.clear();
-        if (pendingResult != null) {
-            currentResult = pendingResult;
-            pendingResult = null;
-            lastWin = currentResult.totalPayout;
-            if (!payoutApplied) {
-                credits += lastWin;
-                payoutApplied = true;
-            }
+    private StakeSlotEngine.SpinResult createBigWin() {
+        String[][] b = new String[5][3];
+        String[] mid = {StakeSlotEngine.ACE, StakeSlotEngine.KING, StakeSlotEngine.QUEEN,
+                StakeSlotEngine.JACK, StakeSlotEngine.BELL};
+        String[] low = {StakeSlotEngine.JACK, StakeSlotEngine.QUEEN, StakeSlotEngine.KING,
+                StakeSlotEngine.ACE, StakeSlotEngine.BAR};
+        for (int r = 0; r < 5; r++) {
+            b[r][0] = StakeSlotEngine.WILD;
+            b[r][1] = mid[r];
+            b[r][2] = low[r];
         }
-        displayedWin = lastWin;
-        phase = Phase.IDLE;
-        flashUntilMs = 0L;
+        return engine.evaluate(b, new int[5], betPerLine);
+    }
+
+    private void skipAnimation() {
+        long now = SystemClock.uptimeMillis();
+        if (phase == Phase.SPINNING) settleResult(now);
+        if (phase == Phase.REVEALING) finishRound();
         particles.clear();
-        message = lastWin > 0 ? "Ganaste " + numberFormat.format(lastWin) + " CR"
-                : "Sin premio · resultado independiente";
-        audio.playTap();
-        saveState();
-        invalidate();
+        audio.stopRewardSequence();
+    }
+
+    private void spawnImpact(int reel, long now) {
+        int amount = reducedMotion ? 4 : 12;
+        float cx = REEL_LEFT + reel * (REEL_W + REEL_GAP) + REEL_W / 2;
+        for (int i = 0; i < amount; i++) {
+            float angle = (float)(visualRandom.nextDouble() * Math.PI * 2);
+            float speed = 28 + visualRandom.nextFloat() * 70;
+            particles.add(new Particle(cx, REEL_TOP + CELL_H * 3 + 2,
+                    (float)Math.cos(angle) * speed, -Math.abs((float)Math.sin(angle)) * speed,
+                    now, 520 + visualRandom.nextInt(420), 0xFFF6C453, 1.4f + visualRandom.nextFloat() * 2.2f));
+        }
+    }
+
+    private void spawnCelebration(long now, double multiplier) {
+        int amount = reducedMotion ? 18 : multiplier >= 20 ? 130 : multiplier >= 5 ? 75 : 42;
+        for (int i = 0; i < amount; i++) {
+            float x = 28 + visualRandom.nextFloat() * 304;
+            float y = 165 + visualRandom.nextFloat() * 240;
+            float vx = -55 + visualRandom.nextFloat() * 110;
+            float vy = -135 - visualRandom.nextFloat() * 145;
+            int[] colors = {0xFFF6C453, 0xFFFF6BB5, 0xFF64DCFF, 0xFF8B65FF, 0xFFFFFFFF};
+            particles.add(new Particle(x, y, vx, vy, now,
+                    1300 + visualRandom.nextInt(1700), colors[i % colors.length],
+                    1.4f + visualRandom.nextFloat() * 3.5f));
+        }
+    }
+
+    private void updateParticles(long now) {
+        for (int i = particles.size() - 1; i >= 0; i--) {
+            Particle q = particles.get(i);
+            if (now - q.birth > q.life) { particles.remove(i); continue; }
+            q.vy += 160f * frameDt;
+            q.x += q.vx * frameDt;
+            q.y += q.vy * frameDt;
+            q.rotation += q.vx * frameDt * .06f;
+        }
+    }
+
+    private void drawParticles(Canvas c, long now) {
+        for (Particle q : particles) {
+            float life = clamp((now - q.birth) / (float)q.life);
+            int a = (int)(255 * (1f - life));
+            p.setColor((q.color & 0x00FFFFFF) | (a << 24));
+            c.save();
+            c.rotate(q.rotation, q.x, q.y);
+            c.drawRoundRect(new RectF(q.x - q.size, q.y - q.size * .45f,
+                    q.x + q.size, q.y + q.size * .45f), q.size / 2, q.size / 2, p);
+            c.restore();
+        }
+    }
+
+    private void save() {
+        prefs.edit().putInt("credits", credits).putInt("bet", betPerLine)
+                .putInt("rounds", rounds).putBoolean("sound", soundEnabled)
+                .putBoolean("haptic", hapticEnabled).putBoolean("reduced_motion", reducedMotion).apply();
     }
 
     public void onHostPause() {
-        if (phase != Phase.IDLE) finishImmediately();
-        frameStats.resetClock();
-    }
-
-    private void saveState() {
-        preferences.edit()
-                .putInt("credits", credits)
-                .putInt("bet_per_line", betPerLine)
-                .putInt("spins_played", spinsPlayed)
-                .putBoolean("sound_enabled", audio.isEnabled())
-                .putBoolean("haptic_enabled", haptics.isEnabled())
-                .apply();
-    }
-
-    private String formatMultiplier(double value) {
-        if (value >= 100d) return String.format(Locale.US, "%.0f", value);
-        if (value >= 10d) return String.format(Locale.US, "%.1f", value);
-        return String.format(Locale.US, "%.2f", value);
+        if (phase != Phase.IDLE) skipAnimation();
     }
 
     public void release() {
-        if (frameCallbackPosted) choreographer.removeFrameCallback(this);
-        frameCallbackPosted = false;
-        timeline.clear();
-        particles.clear();
-        audio.release();
-        haptics.release();
+        frameLoop = false;
+        Choreographer.getInstance().removeFrameCallback(this);
+        audio.release(); haptics.release(); particles.clear();
     }
 
-    private void panel(Canvas canvas, float left, float top, float right, float bottom,
-                       float radius, int fill, int line) {
-        paint.setStyle(Paint.Style.FILL);
-        paint.setColor(fill);
-        canvas.drawRoundRect(new RectF(left, top, right, bottom), radius, radius, paint);
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeWidth(1.3f);
-        paint.setColor(line);
-        canvas.drawRoundRect(new RectF(left, top, right, bottom), radius, radius, paint);
-        paint.setStyle(Paint.Style.FILL);
+    private void panel(Canvas c, float l, float t, float r, float b, float radius, int fill, int line) {
+        p.setStyle(Paint.Style.FILL); p.setColor(fill);
+        c.drawRoundRect(new RectF(l, t, r, b), radius, radius, p);
+        p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(1.25f); p.setColor(line);
+        c.drawRoundRect(new RectF(l, t, r, b), radius, radius, p);
+        p.setStyle(Paint.Style.FILL);
     }
 
-    private void button(Canvas canvas, float left, float top, float right, float bottom,
-                        String label, int fill, int color, float textSize) {
-        paint.setColor(fill);
-        canvas.drawRoundRect(new RectF(left, top, right, bottom), (bottom - top) / 2f,
-                (bottom - top) / 2f, paint);
-        text(canvas, label, (left + right) / 2f, (top + bottom) / 2f + textSize * 0.34f,
-                textSize, color, true, Paint.Align.CENTER);
+    private void button(Canvas c, float l, float t, float r, float b, String label,
+                        int fill, int color, float size) {
+        p.setShadowLayer(7, 0, 3, (fill & 0x00FFFFFF) | 0x55000000);
+        p.setColor(fill); c.drawRoundRect(new RectF(l, t, r, b), (b - t) / 2, (b - t) / 2, p);
+        p.clearShadowLayer(); text(c, label, (l + r) / 2, (t + b) / 2 + size * .34f,
+                size, color, true, Paint.Align.CENTER);
     }
 
-    private void crown(Canvas canvas, float centerX, float centerY, float size, int color) {
+    private void crown(Canvas c, float cx, float cy, float size, int color) {
         path.reset();
-        path.moveTo(centerX - size * 0.55f, centerY + size * 0.28f);
-        path.lineTo(centerX - size * 0.45f, centerY - size * 0.38f);
-        path.lineTo(centerX - size * 0.13f, centerY - size * 0.02f);
-        path.lineTo(centerX, centerY - size * 0.58f);
-        path.lineTo(centerX + size * 0.15f, centerY - size * 0.02f);
-        path.lineTo(centerX + size * 0.48f, centerY - size * 0.38f);
-        path.lineTo(centerX + size * 0.55f, centerY + size * 0.28f);
-        path.close();
-        paint.setColor(color);
-        canvas.drawPath(path, paint);
-        canvas.drawRoundRect(new RectF(centerX - size * 0.58f, centerY + size * 0.34f,
-                centerX + size * 0.58f, centerY + size * 0.48f), 2, 2, paint);
+        path.moveTo(cx - size * .58f, cy + size * .28f);
+        path.lineTo(cx - size * .47f, cy - size * .37f);
+        path.lineTo(cx - size * .14f, cy - size * .02f);
+        path.lineTo(cx, cy - size * .59f);
+        path.lineTo(cx + size * .15f, cy - size * .02f);
+        path.lineTo(cx + size * .49f, cy - size * .38f);
+        path.lineTo(cx + size * .58f, cy + size * .28f); path.close();
+        p.setColor(color); c.drawPath(path, p);
+        c.drawRoundRect(new RectF(cx - size * .6f, cy + size * .34f,
+                cx + size * .6f, cy + size * .49f), 2, 2, p);
     }
 
-    private void text(Canvas canvas, String value, float x, float y, float size,
-                      int color, boolean bold, Paint.Align align) {
-        paint.setShader(null);
-        paint.setStyle(Paint.Style.FILL);
-        paint.setColor(color);
-        paint.setTextSize(size);
-        paint.setTextAlign(align);
-        paint.setTypeface(Typeface.create("sans", bold ? Typeface.BOLD : Typeface.NORMAL));
-        canvas.drawText(value, x, y, paint);
+    private void diamond(Canvas c, float cx, float cy, float size, int color) {
+        path.reset(); path.moveTo(cx, cy - size); path.lineTo(cx + size * .82f, cy - size * .27f);
+        path.lineTo(cx + size * .55f, cy + size); path.lineTo(cx - size * .55f, cy + size);
+        path.lineTo(cx - size * .82f, cy - size * .27f); path.close();
+        p.setColor(color); p.setShadowLayer(8, 0, 0, color); c.drawPath(path, p); p.clearShadowLayer();
+        p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(2); p.setColor(0xCCFFFFFF);
+        c.drawLine(cx, cy - size, cx, cy + size, p); p.setStyle(Paint.Style.FILL);
+    }
+
+    private void bell(Canvas c, float cx, float cy, float size, int color) {
+        path.reset(); path.moveTo(cx - size * .7f, cy + size * .45f);
+        path.quadTo(cx - size * .5f, cy - size * .75f, cx, cy - size * .85f);
+        path.quadTo(cx + size * .5f, cy - size * .75f, cx + size * .7f, cy + size * .45f);
+        path.close(); p.setColor(color); p.setShadowLayer(7, 0, 2, 0x77000000); c.drawPath(path, p); p.clearShadowLayer();
+        c.drawOval(new RectF(cx - size * .82f, cy + size * .32f, cx + size * .82f, cy + size * .62f), p);
+        p.setColor(0xFF8B5714); c.drawCircle(cx, cy + size * .72f, size * .2f, p);
+    }
+
+    private void text(Canvas c, String value, float x, float y, float size, int color,
+                      boolean bold, Paint.Align align) {
+        p.setShader(null); p.setStyle(Paint.Style.FILL); p.setColor(color); p.setTextSize(size);
+        p.setTextAlign(align); p.setTypeface(Typeface.create("sans", bold ? Typeface.BOLD : Typeface.NORMAL));
+        c.drawText(value, x, y, p);
+    }
+
+    private String formatMultiplier(double value) {
+        if (value >= 100) return String.format(Locale.US, "%.0f", value);
+        if (value >= 10) return String.format(Locale.US, "%.1f", value);
+        return String.format(Locale.US, "%.2f", value);
+    }
+
+    private static float clamp(float v) { return Math.max(0f, Math.min(1f, v)); }
+    private static float easeOut(float v) { float q = 1f - v; return 1f - q * q * q; }
+
+    private static final class Particle {
+        float x, y, vx, vy, rotation;
+        final long birth, life;
+        final int color;
+        final float size;
+        Particle(float x, float y, float vx, float vy, long birth, long life, int color, float size) {
+            this.x=x; this.y=y; this.vx=vx; this.vy=vy; this.birth=birth; this.life=life;
+            this.color=color; this.size=size;
+        }
     }
 }
