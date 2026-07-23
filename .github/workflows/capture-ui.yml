@@ -58,16 +58,17 @@ jobs:
             adb shell am force-stop cl.exequiel.royalspin || true
             adb shell am start -W -n cl.exequiel.royalspin/.MainActivity --es demo feature
             sleep 3
-            adb exec-out screencap -p > screenshots/02-wild-trigger.png
-            sleep 2.6
-            adb exec-out screencap -p > screenshots/03-feature-intro-30.png
-            sleep 4.2
-            adb exec-out screencap -p > screenshots/04-free-spins-hud.png
+            adb exec-out screencap -p > screenshots/02-early-trigger.png
+            sleep 3
+            adb exec-out screencap -p > screenshots/03-wild-line-reveal.png
+            sleep 5
+            adb exec-out screencap -p > screenshots/04-feature-transition.png
+            sleep 7
+            adb exec-out screencap -p > screenshots/05-free-spins-active.png
+            sleep 5
+            adb exec-out screencap -p > screenshots/06-free-spins-progress.png
 
-            test -s screenshots/01-idle-v1.6.png
-            test -s screenshots/02-wild-trigger.png
-            test -s screenshots/03-feature-intro-30.png
-            test -s screenshots/04-free-spins-hud.png
+            for file in screenshots/*.png; do test -s "$file"; done
 
             adb logcat -d > screenshots/logcat.txt || true
             if grep -q "FATAL EXCEPTION" screenshots/logcat.txt; then
