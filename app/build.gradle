@@ -10,8 +10,8 @@ android {
         applicationId 'cl.exequiel.royalspin'
         minSdk 24
         targetSdk 35
-        versionCode 3
-        versionName '0.3.0-audiovisual-foundation'
+        versionCode 4
+        versionName '0.4.0-reel-spectacle'
     }
 
     buildTypes {
