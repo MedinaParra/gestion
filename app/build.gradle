@@ -10,8 +10,8 @@ android {
         applicationId 'cl.exequiel.royalspin'
         minSdk 24
         targetSdk 35
-        versionCode 6
-        versionName '0.6.0-cinematic-audio'
+        versionCode 7
+        versionName '0.7.0-stage-2_5d'
     }
 
     buildTypes {
