@@ -1,4 +1,4 @@
-name: Capture Royal Spin Premium UI
+name: Capture Royal Spin Final UI
 
 on:
   pull_request:
@@ -7,7 +7,7 @@ on:
 jobs:
   capture:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -48,48 +48,53 @@ jobs:
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             adb shell settings put secure immersive_mode_confirmations confirmed || true
 
-            adb shell am force-stop cl.exequiel.royalspin
-            adb shell am start -W -n cl.exequiel.royalspin/.MainActivity
+            launch() {
+              adb shell am force-stop cl.exequiel.royalspin
+              if [ -z "$1" ]; then
+                adb shell am start -W -n cl.exequiel.royalspin/.MainActivity
+              else
+                adb shell am start -W -n cl.exequiel.royalspin/.MainActivity --es demo "$1"
+              fi
+            }
+
+            launch ""
             sleep 2
-            adb exec-out screencap -p > screenshots/01-idle-v0.9.png
+            adb exec-out screencap -p > screenshots/01-idle-v1.5.png
 
-            adb shell am force-stop cl.exequiel.royalspin
-            adb shell am start -W -n cl.exequiel.royalspin/.MainActivity --es demo bell
-            sleep 1.45
-            adb exec-out screencap -p > screenshots/02-bell-spinning.png
-            sleep 1.85
-            adb exec-out screencap -p > screenshots/03-bell-celebration.png
+            launch anticipation
+            sleep 2.65
+            adb exec-out screencap -p > screenshots/02-valid-anticipation.png
 
-            adb shell am force-stop cl.exequiel.royalspin
-            adb shell am start -W -n cl.exequiel.royalspin/.MainActivity --es demo bar
-            sleep 3.35
-            adb exec-out screencap -p > screenshots/04-bar-celebration.png
+            launch bell
+            sleep 3.65
+            adb exec-out screencap -p > screenshots/03-bell-cinematic.png
 
-            adb shell am force-stop cl.exequiel.royalspin
-            adb shell am start -W -n cl.exequiel.royalspin/.MainActivity --es demo seven
-            sleep 3.35
-            adb exec-out screencap -p > screenshots/05-seven-celebration.png
+            launch bar
+            sleep 3.65
+            adb exec-out screencap -p > screenshots/04-bar-mechanical.png
 
-            adb shell am force-stop cl.exequiel.royalspin
-            adb shell am start -W -n cl.exequiel.royalspin/.MainActivity --es demo diamond
-            sleep 3.35
-            adb exec-out screencap -p > screenshots/06-diamond-celebration.png
+            launch seven
+            sleep 3.65
+            adb exec-out screencap -p > screenshots/05-seven-energy.png
 
-            adb shell am force-stop cl.exequiel.royalspin
-            adb shell am start -W -n cl.exequiel.royalspin/.MainActivity --es demo wild
-            sleep 3.45
+            launch diamond
+            sleep 3.65
+            adb exec-out screencap -p > screenshots/06-diamond-prismatic.png
+
+            launch wild
+            sleep 3.75
             adb exec-out screencap -p > screenshots/07-wild-royal-win.png
 
       - name: Upload screenshots
         uses: actions/upload-artifact@v4
         with:
-          name: RoyalSpin-premium-symbols-v0.9
+          name: RoyalSpin-final-v1.5-screenshots
           path: screenshots/*.png
           if-no-files-found: error
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: RoyalSpin-royal-art-v0.9-apk
+          name: RoyalSpin-final-v1.5-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
