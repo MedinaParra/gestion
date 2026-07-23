@@ -13,9 +13,9 @@ if __name__ == "__main__":
         gamestate=gamestate,
         config=config,
         num_sim_args={"base": 5000},
-        batching_size=1000,
-        num_threads=2,
-        compression=True,
+        batch_size=1000,
+        threads=2,
+        compress=True,
         profiling=False,
     )
     generate_configs(gamestate)
