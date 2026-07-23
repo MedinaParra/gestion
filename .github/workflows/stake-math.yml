@@ -24,16 +24,19 @@ jobs:
 
       - name: Install SDK dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r /tmp/math-sdk/requirements.txt
-          pip install -e /tmp/math-sdk
+          python -m pip install --upgrade pip >/dev/null
+          pip install -r /tmp/math-sdk/requirements.txt >/dev/null
+          pip install -e /tmp/math-sdk >/dev/null
 
       - name: Install Royal Spin game files
         run: cp -R stake-engine/royal_spin_lines /tmp/math-sdk/games/royal_spin_lines
 
       - name: Generate 5,000 traceable rounds
         working-directory: /tmp/math-sdk
-        run: python games/royal_spin_lines/run.py
+        shell: bash
+        run: |
+          set -o pipefail
+          python games/royal_spin_lines/run.py 2>&1 | tail -n 120
 
       - name: Show generated files
         run: find /tmp/math-sdk/games/royal_spin_lines/library -maxdepth 3 -type f -print
