@@ -11,8 +11,8 @@ import android.view.View;
 
 /** Small top overlay that makes every captured iteration traceable. */
 public final class IterationBadge extends View implements Choreographer.FrameCallback {
-    public static final int LEVEL = 6;
-    public static final String LABEL = "v0.6 · CINEMATIC AUDIO";
+    public static final int LEVEL = 7;
+    public static final String LABEL = "v0.7 · STAGE 2.5D";
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
     private boolean running;
 
@@ -49,23 +49,27 @@ public final class IterationBadge extends View implements Choreographer.FrameCal
         canvas.scale(scale, scale);
         p.setStyle(Paint.Style.FILL);
         p.setColor(0xF0101320);
-        canvas.drawRoundRect(new RectF(103, 68, 257, 87), 9, 9, p);
+        canvas.drawRoundRect(new RectF(108, 68, 252, 87), 9, 9, p);
         p.setStyle(Paint.Style.STROKE);
         p.setStrokeWidth(1.1f);
-        p.setColor(0xCCF6C453);
-        canvas.drawRoundRect(new RectF(103, 68, 257, 87), 9, 9, p);
+        p.setColor(0xCC5FCBFF);
+        canvas.drawRoundRect(new RectF(108, 68, 252, 87), 9, 9, p);
         p.setStyle(Paint.Style.FILL);
         p.setTypeface(Typeface.create("sans", Typeface.BOLD));
         p.setTextAlign(Paint.Align.CENTER);
         p.setTextSize(7.5f);
-        p.setColor(0xFFFFE7A1);
+        p.setColor(0xFFDFF7FF);
         canvas.drawText(LABEL, 180, 80.5f, p);
-        float t = SystemClock.uptimeMillis() * .012f;
-        for (int i = 0; i < 5; i++) {
-            float h = 2.5f + (float)Math.abs(Math.sin(t + i * .9f)) * 6f;
-            p.setColor(i % 2 == 0 ? 0xCCF6C453 : 0xAA8B65FF);
-            canvas.drawRoundRect(new RectF(113 + i * 7, 82 - h, 116 + i * 7, 82), 2, 2, p);
-            canvas.drawRoundRect(new RectF(244 - i * 7, 82 - h, 247 - i * 7, 82), 2, 2, p);
+        float t = SystemClock.uptimeMillis() * .004f;
+        for (int i = 0; i < 4; i++) {
+            float dx = (float)Math.sin(t + i * 1.4f) * 4f;
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(1f);
+            p.setColor(i % 2 == 0 ? 0x995FCBFF : 0x99F6C453);
+            canvas.drawOval(new RectF(117 + i * 6 + dx, 72 + i,
+                    126 + i * 6 + dx, 84 - i), p);
+            canvas.drawOval(new RectF(234 - i * 6 - dx, 72 + i,
+                    243 - i * 6 - dx, 84 - i), p);
         }
         canvas.restore();
     }
