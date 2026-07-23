@@ -27,10 +27,12 @@ public class MainActivity extends Activity {
         slotView = new SlotView(this, demoMode);
         SpectacleOverlay overlay = new SpectacleOverlay(this);
         IterationBadge badge = new IterationBadge(this);
+        AdaptivePerformanceOverlay performance = new AdaptivePerformanceOverlay(this, overlay);
         FrameLayout root = new FrameLayout(this);
         root.addView(slotView, match());
         root.addView(overlay, match());
         root.addView(badge, match());
+        root.addView(performance, match());
         setContentView(root);
     }
 
