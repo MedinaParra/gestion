@@ -14,10 +14,9 @@ import android.os.SystemClock;
 import android.view.Choreographer;
 import android.view.View;
 
-/** Transparent vector overlay used by v0.5+ without touching Stake math. */
+/** Vector 2.5D overlay: living symbols, light volume and perspective stage. */
 public final class SpectacleOverlay extends View implements Choreographer.FrameCallback {
-    public static final int LEVEL = 5;
-    public static final String LABEL = "v0.5 · LIVING SYMBOLS";
+    public static final int LEVEL = 7;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path = new Path();
     private boolean running;
@@ -56,27 +55,82 @@ public final class SpectacleOverlay extends View implements Choreographer.FrameC
         canvas.save();
         canvas.translate(offsetX, offsetY);
         canvas.scale(scale, scale);
-        drawVersionBadge(canvas);
+        drawVolumetricLights(canvas, now);
+        drawPerspectiveStage(canvas, now);
+        drawSideColumns(canvas, now);
         drawLivingReels(canvas, now);
         drawHolographicCrown(canvas, now);
         drawEnergyRail(canvas, now);
+        drawDepthOrbits(canvas, now);
         canvas.restore();
     }
 
-    private void drawVersionBadge(Canvas c) {
+    private void drawVolumetricLights(Canvas c, long now) {
+        float sweep = (float)Math.sin(now * .0008f) * 24f;
         paint.setStyle(Paint.Style.FILL);
-        paint.setColor(0xE8101320);
-        c.drawRoundRect(new RectF(111, 69, 249, 86), 8, 8, paint);
+        path.reset();
+        path.moveTo(82 + sweep, 0);
+        path.lineTo(136 + sweep, 0);
+        path.lineTo(242, 510);
+        path.lineTo(154, 510);
+        path.close();
+        paint.setShader(new LinearGradient(110 + sweep, 0, 190, 510,
+                new int[]{0x005FCBFF, 0x185FCBFF, 0x005FCBFF}, null, Shader.TileMode.CLAMP));
+        c.drawPath(path, paint);
+        paint.setShader(null);
+
+        path.reset();
+        path.moveTo(224 - sweep, 0);
+        path.lineTo(278 - sweep, 0);
+        path.lineTo(206, 510);
+        path.lineTo(118, 510);
+        path.close();
+        paint.setShader(new LinearGradient(250 - sweep, 0, 170, 510,
+                new int[]{0x00F6C453, 0x17F6C453, 0x00F6C453}, null, Shader.TileMode.CLAMP));
+        c.drawPath(path, paint);
+        paint.setShader(null);
+    }
+
+    private void drawPerspectiveStage(Canvas c, long now) {
+        float pulse = .55f + .45f * (float)Math.sin(now * .0017f);
         paint.setStyle(Paint.Style.STROKE);
         paint.setStrokeWidth(1f);
-        paint.setColor(0xAA9B62FF);
-        c.drawRoundRect(new RectF(111, 69, 249, 86), 8, 8, paint);
+        for (int i = 0; i < 8; i++) {
+            float y = 490 + i * i * 4.2f;
+            int alpha = 18 + i * 4;
+            paint.setColor((alpha << 24) | (i % 2 == 0 ? 0x7C66FF : 0xF6C453));
+            c.drawArc(new RectF(180 - 42 - i * 27, y - 8, 180 + 42 + i * 27, y + 18),
+                    190, 160, false, paint);
+        }
+        for (int i = -5; i <= 5; i++) {
+            paint.setColor((18 << 24) | (i % 2 == 0 ? 0x5FCBFF : 0x8B65FF));
+            c.drawLine(180, 490, 180 + i * 37, 800, paint);
+        }
         paint.setStyle(Paint.Style.FILL);
-        paint.setTypeface(Typeface.create("sans", Typeface.BOLD));
-        paint.setTextAlign(Paint.Align.CENTER);
-        paint.setTextSize(7.5f);
-        paint.setColor(0xFFE8DFFF);
-        c.drawText(LABEL, 180, 80.5f, paint);
+        paint.setShader(new RadialGradient(180, 511, 150,
+                new int[]{((int)(35 * pulse) << 24) | 0xF6C453, 0x126A4CFF, 0x00000000},
+                null, Shader.TileMode.CLAMP));
+        c.drawOval(new RectF(38, 475, 322, 548), paint);
+        paint.setShader(null);
+    }
+
+    private void drawSideColumns(Canvas c, long now) {
+        float glow = .5f + .5f * (float)Math.sin(now * .002f);
+        for (int side = 0; side < 2; side++) {
+            float left = side == 0 ? 1 : 347;
+            paint.setShader(new LinearGradient(left, 140, left + 12, 140,
+                    side == 0
+                            ? new int[]{0x00F6C453, 0x55F6C453, 0x005FCBFF}
+                            : new int[]{0x005FCBFF, 0x55F6C453, 0x00F6C453},
+                    null, Shader.TileMode.CLAMP));
+            c.drawRoundRect(new RectF(left, 145, left + 12, 690), 6, 6, paint);
+            paint.setShader(null);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(1.5f + glow);
+            paint.setColor(((35 + (int)(glow * 40)) << 24) | 0xF6C453);
+            c.drawRoundRect(new RectF(left + 2, 150, left + 10, 684), 5, 5, paint);
+            paint.setStyle(Paint.Style.FILL);
+        }
     }
 
     private void drawLivingReels(Canvas c, long now) {
@@ -108,18 +162,18 @@ public final class SpectacleOverlay extends View implements Choreographer.FrameC
     private void drawHolographicCrown(Canvas c, long now) {
         float pulse = .5f + .5f * (float)Math.sin(now * .0032f);
         float cx = 180, cy = 27;
-        for (int ring = 0; ring < 3; ring++) {
-            float radius = 25 + ring * 7 + pulse * 2;
+        for (int ring = 0; ring < 4; ring++) {
+            float radius = 25 + ring * 6 + pulse * 2;
             paint.setStyle(Paint.Style.STROKE);
             paint.setStrokeWidth(1.2f);
-            paint.setColor(((26 - ring * 6) << 24) | 0xF6C453);
+            paint.setColor(((28 - ring * 5) << 24) | (ring % 2 == 0 ? 0xF6C453 : 0x5FCBFF));
             c.drawCircle(cx, cy, radius, paint);
         }
         paint.setStyle(Paint.Style.FILL);
-        for (int i = 0; i < 7; i++) {
-            double a = now * .0012 + i * Math.PI * 2 / 7;
-            float x = cx + (float)Math.cos(a) * (29 + pulse * 3);
-            float y = cy + (float)Math.sin(a) * (16 + pulse * 2);
+        for (int i = 0; i < 9; i++) {
+            double a = now * .0012 + i * Math.PI * 2 / 9;
+            float x = cx + (float)Math.cos(a) * (30 + pulse * 4);
+            float y = cy + (float)Math.sin(a) * (17 + pulse * 2);
             paint.setColor(i % 2 == 0 ? 0x99F6C453 : 0x885FCBFF);
             c.drawCircle(x, y, 1.2f + pulse, paint);
         }
@@ -138,6 +192,20 @@ public final class SpectacleOverlay extends View implements Choreographer.FrameC
         path.moveTo(24, 486);
         path.cubicTo(90, 473, 270, 498, 336, 484);
         c.drawPath(path, paint);
+        paint.setStyle(Paint.Style.FILL);
+    }
+
+    private void drawDepthOrbits(Canvas c, long now) {
+        paint.setStyle(Paint.Style.STROKE);
+        for (int i = 0; i < 5; i++) {
+            float phase = now * (.00065f + i * .00005f) + i;
+            float cx = 180 + (float)Math.sin(phase) * (115 - i * 12);
+            float cy = 310 + (float)Math.cos(phase * 1.2f) * (155 - i * 16);
+            float radius = 5 + i * 2;
+            paint.setStrokeWidth(1f);
+            paint.setColor(((20 + i * 6) << 24) | (i % 2 == 0 ? 0x5FCBFF : 0xF6C453));
+            c.drawOval(new RectF(cx - radius * 2, cy - radius, cx + radius * 2, cy + radius), paint);
+        }
         paint.setStyle(Paint.Style.FILL);
     }
 }
