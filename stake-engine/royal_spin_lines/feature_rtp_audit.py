@@ -12,15 +12,15 @@ SYMBOLS = ["W", "7", "D", "BELL", "BAR", "A", "K", "Q", "J"]
 SYMBOL_TO_ID = {symbol: index for index, symbol in enumerate(SYMBOLS)}
 WILD = SYMBOL_TO_ID["W"]
 PAYTABLE = {
-    "W": {3: 80, 4: 399, 5: 1993},
-    "7": {3: 65, 4: 249, 5: 1245},
-    "D": {3: 50, 4: 164, 5: 827},
-    "BELL": {3: 40, 4: 124, 5: 498},
-    "BAR": {3: 32, 4: 80, 5: 329},
-    "A": {3: 17, 4: 40, 5: 164},
-    "K": {3: 12, 4: 32, 5: 124},
-    "Q": {3: 8, 4: 24, 5: 80},
-    "J": {3: 6, 4: 16, 5: 65},
+    "W": {3: 79, 4: 394, 5: 1967},
+    "7": {3: 64, 4: 246, 5: 1229},
+    "D": {3: 49, 4: 162, 5: 816},
+    "BELL": {3: 39, 4: 122, 5: 492},
+    "BAR": {3: 32, 4: 79, 5: 325},
+    "A": {3: 17, 4: 39, 5: 162},
+    "K": {3: 12, 4: 32, 5: 122},
+    "Q": {3: 8, 4: 24, 5: 79},
+    "J": {3: 6, 4: 16, 5: 64},
 }
 PAYLINES = np.asarray([
     [0, 0, 0, 0, 0], [1, 1, 1, 1, 1], [2, 2, 2, 2, 2],
@@ -182,8 +182,8 @@ def main():
     with open(args.output, "w", encoding="utf-8") as handle:
         json.dump(report, handle, indent=2, sort_keys=True)
     print(json.dumps(report, indent=2, sort_keys=True))
-    if not 0.945 <= report["combinedRtp"] <= 0.965:
-        raise SystemExit("Combined RTP is outside the approved 94.5%-96.5% band")
+    if not 0.950 <= report["combinedRtp"] <= 0.960:
+        raise SystemExit("Combined RTP is outside the approved 95.0%-96.0% band")
     if report["maximumFeatureLength"] > 90:
         raise SystemExit("Feature length exceeded the configured cap")
 
