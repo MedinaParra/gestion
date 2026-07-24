@@ -7,9 +7,11 @@ import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
+import android.widget.FrameLayout;
 
 public final class LandscapeMainActivity extends Activity {
     private LandscapeSlotView gameView;
+    private LandscapeHeaderOverlay headerOverlay;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -18,7 +20,13 @@ public final class LandscapeMainActivity extends Activity {
         applyImmersive();
         String demo = getIntent() == null ? null : getIntent().getStringExtra("demo");
         gameView = new LandscapeSlotView(this, demo);
-        setContentView(gameView);
+        headerOverlay = new LandscapeHeaderOverlay(this);
+        FrameLayout root = new FrameLayout(this);
+        root.addView(gameView, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        root.addView(headerOverlay, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        setContentView(root);
     }
 
     @Override public void onWindowFocusChanged(boolean hasFocus) {
@@ -38,6 +46,7 @@ public final class LandscapeMainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        if (headerOverlay != null) headerOverlay.release();
         if (gameView != null) gameView.release();
         super.onDestroy();
     }
