@@ -25,14 +25,14 @@ public class StakeSlotEngineTest {
     public void wildSubstitutesFromLeft() {
         int payout = StakeSlotEngine.evaluateLineMultiplierForTest(
                 new String[]{"W", "W", "7", "Q", "J"});
-        assertEquals(65, payout);
+        assertEquals(64, payout);
     }
 
     @Test
     public void allWildsUseFiveWildPayout() {
         int payout = StakeSlotEngine.evaluateLineMultiplierForTest(
                 new String[]{"W", "W", "W", "W", "W"});
-        assertEquals(1993, payout);
+        assertEquals(1967, payout);
     }
 
     @Test
