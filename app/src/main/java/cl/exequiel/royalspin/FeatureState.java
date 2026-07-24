@@ -1,8 +1,13 @@
 package cl.exequiel.royalspin;
 
-/** Mutable feature state owned by FeatureSessionController. */
+/** Mutable feature state owned exclusively by FeatureSessionController. */
 public final class FeatureState {
+    public static final int SCHEMA_VERSION = 2;
+
+    public int schemaVersion = SCHEMA_VERSION;
     public boolean active;
+    public long sessionId;
+    public long lastSettledRoundId;
     public int totalAwardedSpins;
     public int spinsRemaining;
     public int spinsPlayed;
@@ -13,7 +18,10 @@ public final class FeatureState {
 
     public FeatureState copy() {
         FeatureState copy = new FeatureState();
+        copy.schemaVersion = schemaVersion;
         copy.active = active;
+        copy.sessionId = sessionId;
+        copy.lastSettledRoundId = lastSettledRoundId;
         copy.totalAwardedSpins = totalAwardedSpins;
         copy.spinsRemaining = spinsRemaining;
         copy.spinsPlayed = spinsPlayed;

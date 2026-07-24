@@ -1,4 +1,4 @@
-"""Royal Spin 5x3 / 20-line configuration for Stake Engine Math SDK."""
+"""Royal Spin 2.0: 5x3 / 20 lines with line-WILD free spins."""
 
 import os
 
@@ -19,27 +19,26 @@ class GameConfig(Config):
         super().__init__()
         self.game_id = "royal_spin_lines"
         self.provider_number = 0
-        self.working_name = "Royal Spin Lines"
-        self.wincap = 2050.0
+        self.working_name = "Royal Spin 2.0 Free Spins"
+        self.wincap = 5000.0
         self.win_type = "lines"
-        self.rtp = 0.954796451
+        self.rtp = 0.9548
         self.construct_paths()
 
         self.num_reels = 5
         self.num_rows = [3] * self.num_reels
 
         # Multipliers are expressed against the total 20-line stake.
-        # Android credit values are these multipliers x 20.
         self.paytable = {
-            (5, "W"): 102.50, (4, "W"): 20.50, (3, "W"): 4.10,
-            (5, "7"): 64.00, (4, "7"): 12.80, (3, "7"): 3.35,
-            (5, "D"): 42.50, (4, "D"): 8.45, (3, "D"): 2.55,
-            (5, "BELL"): 25.60, (4, "BELL"): 6.40, (3, "BELL"): 2.05,
-            (5, "BAR"): 16.90, (4, "BAR"): 4.10, (3, "BAR"): 1.65,
-            (5, "A"): 8.45, (4, "A"): 2.05, (3, "A"): 0.85,
-            (5, "K"): 6.40, (4, "K"): 1.65, (3, "K"): 0.60,
-            (5, "Q"): 4.10, (4, "Q"): 1.25, (3, "Q"): 0.40,
-            (5, "J"): 3.35, (4, "J"): 0.80, (3, "J"): 0.30,
+            (5, "W"): 96.95, (4, "W"): 19.40, (3, "W"): 4.05,
+            (5, "7"): 60.60, (4, "7"): 12.30, (3, "7"): 3.15,
+            (5, "D"): 40.40, (4, "D"): 8.05, (3, "D"): 2.40,
+            (5, "BELL"): 24.45, (4, "BELL"): 6.00, (3, "BELL"): 1.90,
+            (5, "BAR"): 16.00, (4, "BAR"): 3.90, (3, "BAR"): 1.60,
+            (5, "A"): 8.00, (4, "A"): 1.90, (3, "A"): 0.85,
+            (5, "K"): 6.00, (4, "K"): 1.60, (3, "K"): 0.60,
+            (5, "Q"): 3.90, (4, "Q"): 1.20, (3, "Q"): 0.40,
+            (5, "J"): 3.15, (4, "J"): 0.80, (3, "J"): 0.30,
         }
 
         self.paylines = {
@@ -53,30 +52,35 @@ class GameConfig(Config):
         }
 
         self.include_padding = True
-        # S is deliberately absent from reels; it keeps the generic draw_board
-        # path compatible without introducing a feature round in v1.
+        # S remains absent. WILD line-prefix detection is implemented in game_override.py.
         self.special_symbols = {"wild": ["W"], "scatter": ["S"]}
         self.freespin_triggers = {
-            self.basegame_type: {6: 0},
-            self.freegame_type: {6: 0},
+            self.basegame_type: {3: 30, 4: 30, 5: 30},
+            self.freegame_type: {3: 10, 4: 10, 5: 10},
         }
         self.anticipation_triggers = {
-            self.basegame_type: 5,
-            self.freegame_type: 5,
+            self.basegame_type: 2,
+            self.freegame_type: 2,
         }
 
-        self.reels = {
-            "BR0": self.read_reels_csv(os.path.join(self.reels_path, "BR0.csv"))
-        }
+        br0 = self.read_reels_csv(os.path.join(self.reels_path, "BR0.csv"))
+        self.reels = {"BR0": br0, "FR0": br0}
         self.padding_reels[self.basegame_type] = self.reels["BR0"]
+        self.padding_reels[self.freegame_type] = self.reels["FR0"]
 
-        base_conditions = {
-            "reel_weights": {self.basegame_type: {"BR0": 1}},
+        regular = {
+            "reel_weights": {
+                self.basegame_type: {"BR0": 1},
+                self.freegame_type: {"FR0": 1},
+            },
             "force_wincap": False,
             "force_freegame": False,
         }
-        zero_conditions = {
-            "reel_weights": {self.basegame_type: {"BR0": 1}},
+        zero = {
+            "reel_weights": {
+                self.basegame_type: {"BR0": 1},
+                self.freegame_type: {"FR0": 1},
+            },
             "force_wincap": False,
             "force_freegame": False,
         }
@@ -91,8 +95,8 @@ class GameConfig(Config):
                 is_feature=True,
                 is_buybonus=False,
                 distributions=[
-                    Distribution(criteria="0", quota=0.60, win_criteria=0.0, conditions=zero_conditions),
-                    Distribution(criteria="basegame", quota=0.40, conditions=base_conditions),
+                    Distribution(criteria="0", quota=0.55, win_criteria=0.0, conditions=zero),
+                    Distribution(criteria="basegame", quota=0.45, conditions=regular),
                 ],
             )
         ]

@@ -1,4 +1,4 @@
-name: Capture Royal Spin Free Spins v1.6
+name: Capture Royal Spin 2.0 Cinematics
 
 on:
   pull_request:
@@ -6,8 +6,10 @@ on:
 
 jobs:
   capture:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    env:
+      ANDROID_AVD_HOME: ${{ github.workspace }}/.android-avd
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -18,76 +20,189 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Enable KVM
+      - name: Configure Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android build packages
         run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
-            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Configure Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
 
-      - name: Build APK
-        run: gradle --no-daemon assembleDebug
+      - name: Build APK before emulator image
+        run: gradle --no-daemon --max-workers=2 assembleDebug
 
-      - name: Capture feature states
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 29
-          arch: x86_64
-          profile: pixel_2
-          cores: 2
-          disable-animations: false
-          emulator-boot-timeout: 900
-          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: |
-            set -e
-            mkdir -p screenshots
-            adb install -r app/build/outputs/apk/debug/app-debug.apk
-            adb shell settings put secure immersive_mode_confirmations confirmed || true
-            adb logcat -c || true
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm || true
 
-            adb shell am force-stop cl.exequiel.royalspin || true
-            adb shell am start -W -n cl.exequiel.royalspin/.MainActivity
-            sleep 2
-            adb exec-out screencap -p > screenshots/01-idle-v1.6.png
+      - name: Install emulator image
+        run: |
+          sdkmanager "emulator" "system-images;android-29;default;x86_64"
 
-            adb shell am force-stop cl.exequiel.royalspin || true
-            adb shell am start -W -n cl.exequiel.royalspin/.MainActivity --es demo feature
-            sleep 3
-            adb exec-out screencap -p > screenshots/02-early-trigger.png
-            sleep 3
-            adb exec-out screencap -p > screenshots/03-wild-line-reveal.png
-            sleep 5
-            adb exec-out screencap -p > screenshots/04-feature-transition.png
-            sleep 7
-            adb exec-out screencap -p > screenshots/05-free-spins-active.png
-            sleep 5
-            adb exec-out screencap -p > screenshots/06-free-spins-progress.png
+      - name: Create and boot AVD
+        id: boot
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          mkdir -p screenshots "$ANDROID_AVD_HOME"
+          {
+            echo "PWD=$(pwd)"
+            echo "ANDROID_HOME=$ANDROID_HOME"
+            echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME"
+            echo no | avdmanager create avd \
+              --force --name royal_spin_v2 \
+              --package "system-images;android-29;default;x86_64" \
+              --device "pixel_2" \
+              --path "$ANDROID_AVD_HOME/royal_spin_v2.avd"
+            create_code=$?
+            echo "AVD_CREATE_EXIT=$create_code"
+            find "$ANDROID_AVD_HOME" -maxdepth 4 -type f -print || true
+            if [ "$create_code" -ne 0 ]; then exit "$create_code"; fi
 
-            for file in screenshots/*.png; do test -s "$file"; done
-
-            adb logcat -d > screenshots/logcat.txt || true
-            if grep -q "FATAL EXCEPTION" screenshots/logcat.txt; then
-              grep -A 30 "FATAL EXCEPTION" screenshots/logcat.txt > screenshots/runtime-summary.txt
+            config="$ANDROID_AVD_HOME/royal_spin_v2.avd/config.ini"
+            if [ ! -f "$config" ]; then
+              echo "MISSING_AVD_CONFIG=$config"
               exit 1
             fi
+            printf '\nhw.cpu.ncore=2\nhw.ramSize=2048\nhw.gpu.enabled=yes\nhw.gpu.mode=swiftshader_indirect\n' >> "$config"
+            nohup "$ANDROID_HOME/emulator/emulator" @royal_spin_v2 \
+              -no-window -no-snapshot -noaudio -no-boot-anim \
+              -gpu swiftshader_indirect -accel on -memory 2048 \
+              > screenshots/emulator.log 2>&1 &
+            emulator_pid=$!
+            echo "$emulator_pid" > screenshots/emulator.pid
+            echo "EMULATOR_PID=$emulator_pid"
+
+            adb start-server
+            if ! timeout 180 adb wait-for-device; then
+              echo "ADB_DEVICE_TIMEOUT"
+              adb devices -l || true
+              tail -n 300 screenshots/emulator.log || true
+              kill "$emulator_pid" 2>/dev/null || true
+              exit 1
+            fi
+            booted=""
+            for attempt in $(seq 1 240); do
+              booted=$(timeout 10 adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)
+              echo "BOOT_ATTEMPT=$attempt VALUE=$booted"
+              if [ "$booted" = "1" ]; then break; fi
+              if ! kill -0 "$emulator_pid" 2>/dev/null; then
+                echo "EMULATOR_PROCESS_EXITED"
+                break
+              fi
+              sleep 2
+            done
+            if [ "$booted" != "1" ]; then
+              echo "AVD did not complete boot"
+              adb devices -l || true
+              tail -n 300 screenshots/emulator.log || true
+              kill "$emulator_pid" 2>/dev/null || true
+              exit 1
+            fi
+            touch screenshots/boot-ready
+            adb shell input keyevent 82 || true
+            adb shell settings put secure immersive_mode_confirmations confirmed || true
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
+          } > screenshots/boot-diagnostic.log 2>&1
+          code=$?
+          cat screenshots/boot-diagnostic.log
+          exit "$code"
+
+      - name: Capture deterministic cinematic states
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          if [ ! -f screenshots/boot-ready ]; then
+            echo "Capture skipped because AVD was not ready" >> screenshots/capture-error.txt
+            exit 0
+          fi
+          adb logcat -c || true
+
+          capture_main() {
+            file="$1"
+            delay="$2"
+            shift 2
+            adb shell am force-stop cl.exequiel.royalspin || true
+            adb shell am start -W -n cl.exequiel.royalspin/.MainActivity "$@"
+            sleep "$delay"
+            adb exec-out screencap -p > "screenshots/$file"
+            test -s "screenshots/$file"
+          }
+
+          capture_qa() {
+            scene="$1"
+            file="$2"
+            adb shell am force-stop cl.exequiel.royalspin || true
+            adb shell am start -W -n cl.exequiel.royalspin/.MainActivity --es qa "$scene"
+            sleep 2
+            adb exec-out screencap -p > "screenshots/$file"
+            test -s "screenshots/$file"
+          }
+
+          adb shell pm clear cl.exequiel.royalspin || true
+          capture_main 01-idle-v2.png 3
+          capture_qa bell       02-bell-rings.png
+          capture_qa bar        03-bar-locks.png
+          capture_qa seven      04-seven-energy.png
+          capture_qa diamond    05-diamond-prism.png
+          capture_qa wild       06-wild-royal-power.png
+          capture_qa feature    07-royal-feature-intro.png
+          capture_qa retrigger  08-wild-retrigger.png
+          capture_qa summary    09-feature-summary.png
+
+          adb shell pm clear cl.exequiel.royalspin || true
+          capture_main 10-free-spins-hud.png 21 --es demo feature
+
+          adb logcat -d > screenshots/logcat.txt || true
+          if grep -q "FATAL EXCEPTION" screenshots/logcat.txt; then
+            grep -A 50 "FATAL EXCEPTION" screenshots/logcat.txt > screenshots/runtime-summary.txt
+            exit 1
+          fi
+
+      - name: Validate images
+        if: always()
+        shell: bash
+        run: |
+          if [ ! -f screenshots/boot-ready ]; then
+            echo "No image validation: AVD did not boot"
+            exit 1
+          fi
+          python - <<'PY'
+          import pathlib, struct
+          images = sorted(pathlib.Path('screenshots').glob('*.png'))
+          assert len(images) == 10, f'Expected 10 screenshots, found {len(images)}'
+          for image in images:
+              data = image.read_bytes()
+              assert data.startswith(b'\x89PNG\r\n\x1a\n'), image
+              width, height = struct.unpack('>II', data[16:24])
+              assert width > 300 and height > 600, (image, width, height)
+              assert len(data) > 5000, f'Suspiciously small screenshot: {image} {len(data)} bytes'
+              print(image.name, width, height, len(data))
+          PY
 
       - name: Upload screenshots and runtime log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: RoyalSpin-free-spins-v1.6-screenshots
+          name: RoyalSpin-v2.0-cinematics
           path: screenshots/**
-          if-no-files-found: warn
+          if-no-files-found: error
 
       - name: Upload APK
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: RoyalSpin-free-spins-v1.6-apk
+          name: RoyalSpin-v2.0-emulator-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error

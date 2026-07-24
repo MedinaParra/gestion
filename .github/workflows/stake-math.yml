@@ -1,15 +1,17 @@
-name: Validate Stake Engine Math
+name: Validate Royal Spin 2.0 Math
 
 on:
   pull_request:
     paths:
       - 'stake-engine/**'
+      - 'app/src/main/java/cl/exequiel/royalspin/StakeSlotEngine.java'
       - '.github/workflows/stake-math.yml'
   workflow_dispatch:
 
 jobs:
   simulate:
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     steps:
       - name: Checkout Royal Spin
         uses: actions/checkout@v4
@@ -28,40 +30,50 @@ jobs:
           pip install -r /tmp/math-sdk/requirements.txt >/dev/null
           pip install -e /tmp/math-sdk >/dev/null
 
+      - name: Audit 10,000,000 complete paid rounds
+        working-directory: stake-engine/royal_spin_lines
+        run: |
+          python feature_rtp_audit.py \
+            --rounds 10000000 \
+            --seed 20260724 \
+            --output feature-rtp-report.json
+
       - name: Install Royal Spin game files
         run: cp -R stake-engine/royal_spin_lines /tmp/math-sdk/games/royal_spin_lines
 
-      - name: Generate 5,000 traceable rounds
+      - name: Generate 5,000 nested Stake Engine books
         working-directory: /tmp/math-sdk
         shell: bash
         run: |
           set +e
           python games/royal_spin_lines/run.py > /tmp/stake-run.log 2>&1
           echo $? > /tmp/stake-exit-code
-          tail -n 80 /tmp/stake-run.log
+          tail -n 120 /tmp/stake-run.log
           exit 0
 
-      - name: Upload Stake diagnostic
+      - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: RoyalSpin-stake-diagnostic
+          name: RoyalSpin-v2-math-diagnostic
           path: |
             /tmp/stake-run.log
             /tmp/stake-exit-code
-          if-no-files-found: error
+            stake-engine/royal_spin_lines/feature-rtp-report.json
+          if-no-files-found: warn
 
-      - name: Verify Stake simulation result
+      - name: Verify Stake book generation
         shell: bash
-        run: |
-          test "$(cat /tmp/stake-exit-code)" = "0"
+        run: test "$(cat /tmp/stake-exit-code)" = "0"
 
       - name: Show generated files
         run: find /tmp/math-sdk/games/royal_spin_lines/library -maxdepth 3 -type f -print
 
-      - name: Upload Stake math output
+      - name: Upload validated math output
         uses: actions/upload-artifact@v4
         with:
-          name: RoyalSpin-stake-math-v0.2
-          path: /tmp/math-sdk/games/royal_spin_lines/library
+          name: RoyalSpin-stake-math-v2.0
+          path: |
+            /tmp/math-sdk/games/royal_spin_lines/library
+            stake-engine/royal_spin_lines/feature-rtp-report.json
           if-no-files-found: error
