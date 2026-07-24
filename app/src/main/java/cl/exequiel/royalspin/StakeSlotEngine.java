@@ -19,8 +19,8 @@ public final class StakeSlotEngine {
     public static final int MAX_BET_PER_LINE = 5;
 
     /** Targets for the complete paid-round lifecycle, including nested free spins. */
-    public static final double BASE_GAME_RTP_TARGET = 0.9285;
-    public static final double FEATURE_RTP_TARGET = 0.0263;
+    public static final double BASE_GAME_RTP_TARGET = 0.9234;
+    public static final double FEATURE_RTP_TARGET = 0.0314;
     public static final double THEORETICAL_RTP = 0.9548;
 
     public static final String WILD = "W";
@@ -180,15 +180,15 @@ public final class StakeSlotEngine {
 
     private static Map<String, int[]> createPaytable() {
         Map<String, int[]> values = new LinkedHashMap<>();
-        values.put(WILD, new int[]{80, 399, 1993});
-        values.put(SEVEN, new int[]{65, 249, 1245});
-        values.put(DIAMOND, new int[]{50, 164, 827});
-        values.put(BELL, new int[]{40, 124, 498});
-        values.put(BAR, new int[]{32, 80, 329});
-        values.put(ACE, new int[]{17, 40, 164});
-        values.put(KING, new int[]{12, 32, 124});
-        values.put(QUEEN, new int[]{8, 24, 80});
-        values.put(JACK, new int[]{6, 16, 65});
+        values.put(WILD, new int[]{79, 394, 1967});
+        values.put(SEVEN, new int[]{64, 246, 1229});
+        values.put(DIAMOND, new int[]{49, 162, 816});
+        values.put(BELL, new int[]{39, 122, 492});
+        values.put(BAR, new int[]{32, 79, 325});
+        values.put(ACE, new int[]{17, 39, 162});
+        values.put(KING, new int[]{12, 32, 122});
+        values.put(QUEEN, new int[]{8, 24, 79});
+        values.put(JACK, new int[]{6, 16, 64});
         return Collections.unmodifiableMap(values);
     }
 
