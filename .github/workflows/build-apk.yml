@@ -1,4 +1,4 @@
-name: Build Royal Spin 2.0 Complete
+name: Build Royal Spin 4.0 Jewel Art
 
 on:
   pull_request:
@@ -26,10 +26,19 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Configure Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.13'
+      - name: Install verified Gradle 8.13
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://downloads.gradle.org/distributions/gradle-8.13-bin.zip"
+          archive="${RUNNER_TEMP}/gradle-8.13-bin.zip"
+          curl --fail --location --retry 8 --retry-delay 4 --retry-all-errors \
+            "$url" --output "$archive"
+          echo "20f1b1176237254a6fc204d8434196fa11a4cfb387567519c61556e8710aed78  $archive" \
+            | sha256sum --check --strict
+          rm -rf "${RUNNER_TEMP}/gradle-8.13"
+          unzip -q "$archive" -d "${RUNNER_TEMP}"
+          echo "${RUNNER_TEMP}/gradle-8.13/bin" >> "$GITHUB_PATH"
 
       - name: Run complete validation
         id: validate
@@ -37,18 +46,18 @@ jobs:
         continue-on-error: true
         run: |
           set +e
-          gradle --no-daemon testDebugUnitTest lintDebug assembleDebug > royal-v2-validation.log 2>&1
+          gradle --no-daemon testDebugUnitTest lintDebug assembleDebug > royal-v4-validation.log 2>&1
           code=$?
-          echo "$code" > royal-v2-validation-exit.txt
+          echo "$code" > royal-v4-validation-exit.txt
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          tail -n 260 royal-v2-validation.log
+          tail -n 320 royal-v4-validation.log
           exit 0
 
       - name: Extract combined math audit
         if: always()
         shell: bash
         run: |
-          grep "ROYAL_SPIN_MATH_AUDIT" royal-v2-validation.log \
+          grep "ROYAL_SPIN_MATH_AUDIT" royal-v4-validation.log \
             > combined-math-audit.txt || true
           cat combined-math-audit.txt || true
 
@@ -58,8 +67,8 @@ jobs:
         run: |
           apk=app/build/outputs/apk/debug/app-debug.apk
           {
-            echo "Royal Spin 2.0.0-royal-free-spins"
-            echo "Validation exit: $(cat royal-v2-validation-exit.txt 2>/dev/null || echo missing)"
+            echo "Royal Spin 4.0.0-jewel-art-animation-system"
+            echo "Validation exit: $(cat royal-v4-validation-exit.txt 2>/dev/null || echo missing)"
             echo "UTC: $(date -u +%FT%TZ)"
             if [ -f "$apk" ]; then
               echo "APK bytes: $(stat -c%s "$apk")"
@@ -68,17 +77,17 @@ jobs:
             fi
             echo ""
             cat combined-math-audit.txt 2>/dev/null || true
-          } | tee royal-v2-report.txt
+          } | tee royal-v4-report.txt
 
       - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: RoyalSpin-v2.0-validation
+          name: RoyalSpin-v4.0-validation
           path: |
-            royal-v2-validation.log
-            royal-v2-validation-exit.txt
-            royal-v2-report.txt
+            royal-v4-validation.log
+            royal-v4-validation-exit.txt
+            royal-v4-report.txt
             combined-math-audit.txt
             app/build/reports/tests/testDebugUnitTest/**
             app/build/reports/lint-results-debug.html
@@ -91,6 +100,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: RoyalSpin-v2.0-complete-apk
+          name: RoyalSpin-v4.0-jewel-art-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
