@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!-- ValueAnimator.RESTART and LottieDrawable.RESTART are the same platform constant.
+         Lottie's @IntDef is not propagated through this Java call site on all lint versions. -->
+    <issue id="WrongConstant">
+        <ignore path="src/main/java/cl/exequiel/royalspin/PremiumTypographyOverlay.java" />
+    </issue>
+</lint>
