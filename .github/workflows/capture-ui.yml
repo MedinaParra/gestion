@@ -1,4 +1,4 @@
-name: Capture Royal Spin Free Spins v1.6
+name: Capture Royal Spin 2.0 Cinematics
 
 on:
   pull_request:
@@ -7,7 +7,7 @@ on:
 jobs:
   capture:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,7 +33,7 @@ jobs:
       - name: Build APK
         run: gradle --no-daemon assembleDebug
 
-      - name: Capture feature states
+      - name: Capture advanced states
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 29
@@ -44,35 +44,55 @@ jobs:
           emulator-boot-timeout: 900
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            set -e
+            set -u
             mkdir -p screenshots
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             adb shell settings put secure immersive_mode_confirmations confirmed || true
             adb logcat -c || true
 
-            adb shell am force-stop cl.exequiel.royalspin || true
-            adb shell am start -W -n cl.exequiel.royalspin/.MainActivity
-            sleep 2
-            adb exec-out screencap -p > screenshots/01-idle-v1.6.png
+            capture() {
+              mode="$1"
+              file="$2"
+              delay="$3"
+              adb shell am force-stop cl.exequiel.royalspin || true
+              if [ -z "$mode" ]; then
+                adb shell am start -W -n cl.exequiel.royalspin/.MainActivity || true
+              else
+                adb shell am start -W -n cl.exequiel.royalspin/.MainActivity --es demo "$mode" || true
+              fi
+              sleep "$delay"
+              adb exec-out screencap -p > "screenshots/$file" || true
+            }
+
+            capture ""        01-idle-v2.png                 3
+            capture bell      02-bell-rings.png              8
+            capture bar       03-bar-locks.png               8
+            capture seven     04-seven-energy.png            8
+            capture diamond   05-diamond-prism.png           8
+            capture five      06-five-wild-royal-trigger.png 8
 
             adb shell am force-stop cl.exequiel.royalspin || true
-            adb shell am start -W -n cl.exequiel.royalspin/.MainActivity --es demo feature
-            sleep 3
-            adb exec-out screencap -p > screenshots/02-early-trigger.png
-            sleep 3
-            adb exec-out screencap -p > screenshots/03-wild-line-reveal.png
+            adb shell pm clear cl.exequiel.royalspin || true
+            adb shell am start -W -n cl.exequiel.royalspin/.MainActivity --es demo feature || true
+            sleep 8
+            adb exec-out screencap -p > screenshots/07-feature-trigger.png || true
             sleep 5
-            adb exec-out screencap -p > screenshots/04-feature-transition.png
-            sleep 7
-            adb exec-out screencap -p > screenshots/05-free-spins-active.png
-            sleep 5
-            adb exec-out screencap -p > screenshots/06-free-spins-progress.png
+            adb exec-out screencap -p > screenshots/08-royal-feature-intro.png || true
+            sleep 8
+            adb exec-out screencap -p > screenshots/09-free-spins-hud.png || true
 
-            for file in screenshots/*.png; do test -s "$file"; done
+            adb shell am force-stop cl.exequiel.royalspin || true
+            adb shell pm clear cl.exequiel.royalspin || true
+            adb shell am start -W -n cl.exequiel.royalspin/.MainActivity --es demo retrigger || true
+            sleep 11
+            adb exec-out screencap -p > screenshots/10-wild-retrigger.png || true
 
             adb logcat -d > screenshots/logcat.txt || true
+            for file in screenshots/*.png; do
+              if [ ! -s "$file" ]; then echo "EMPTY $file" >> screenshots/capture-warnings.txt; fi
+            done
             if grep -q "FATAL EXCEPTION" screenshots/logcat.txt; then
-              grep -A 30 "FATAL EXCEPTION" screenshots/logcat.txt > screenshots/runtime-summary.txt
+              grep -A 40 "FATAL EXCEPTION" screenshots/logcat.txt > screenshots/runtime-summary.txt
               exit 1
             fi
 
@@ -80,7 +100,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: RoyalSpin-free-spins-v1.6-screenshots
+          name: RoyalSpin-v2.0-cinematics
           path: screenshots/**
           if-no-files-found: warn
 
@@ -88,6 +108,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: RoyalSpin-free-spins-v1.6-apk
+          name: RoyalSpin-v2.0-emulator-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
