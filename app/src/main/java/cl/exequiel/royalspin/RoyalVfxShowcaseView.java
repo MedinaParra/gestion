@@ -139,7 +139,7 @@ public final class RoyalVfxShowcaseView extends View implements Choreographer.Fr
         text(c, "5 SÍMBOLOS · COREOGRAFÍA DE PREMIO MÁXIMO", 180, 558,
                 7.3f, 0xFFC4C8D1, true);
 
-        float loop = elapsed % 3800L;
+        long loop = elapsed % 3800L;
         for (int reel = 0; reel < 5; reel++) {
             float cx = 21 + reel * (cellW + gap) + cellW * .5f;
             float cy = top + 122;
