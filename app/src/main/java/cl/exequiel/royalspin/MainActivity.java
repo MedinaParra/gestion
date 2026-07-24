@@ -7,7 +7,7 @@ import android.view.Window;
 import android.view.WindowManager;
 
 public class MainActivity extends Activity {
-    private RoyalSpinV2View gameView;
+    private RoyalSpinPremiumShell gameShell;
     private RoyalVfxShowcaseView showcaseView;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
@@ -26,8 +26,8 @@ public class MainActivity extends Activity {
         }
 
         String demoMode = getIntent() == null ? null : getIntent().getStringExtra("demo");
-        gameView = new RoyalSpinV2View(this, demoMode);
-        setContentView(gameView);
+        gameShell = new RoyalSpinPremiumShell(this, demoMode);
+        setContentView(gameShell);
     }
 
     @Override protected void onResume() {
@@ -36,12 +36,12 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onPause() {
-        if (gameView != null) gameView.onHostPause();
+        if (gameShell != null) gameShell.onHostPause();
         super.onPause();
     }
 
     @Override protected void onDestroy() {
-        if (gameView != null) gameView.release();
+        if (gameShell != null) gameShell.release();
         if (showcaseView != null) showcaseView.release();
         super.onDestroy();
     }
