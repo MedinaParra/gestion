@@ -13,6 +13,7 @@ public final class RoyalSpinPremiumShell extends FrameLayout {
     private final PremiumFeatureRevealOverlay featureRevealOverlay;
     private final PremiumVersionOverlay versionOverlay;
     private final PremiumAudioConductor audioConductor;
+    private final AdaptivePresentationGovernor presentationGovernor;
 
     public RoyalSpinPremiumShell(Context context, String demoMode) {
         super(context);
@@ -24,6 +25,8 @@ public final class RoyalSpinPremiumShell extends FrameLayout {
         featureRevealOverlay = new PremiumFeatureRevealOverlay(context, gameView);
         versionOverlay = new PremiumVersionOverlay(context);
         audioConductor = new PremiumAudioConductor(gameView);
+        presentationGovernor = new AdaptivePresentationGovernor(
+                gameView, typographyOverlay, symbolOverlay);
 
         // Keep every layer on the activity's normal hardware-accelerated canvas.
         typographyOverlay.setLayerType(View.LAYER_TYPE_NONE, null);
@@ -46,23 +49,28 @@ public final class RoyalSpinPremiumShell extends FrameLayout {
     @Override protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         audioConductor.start();
+        presentationGovernor.start();
     }
 
     @Override protected void onDetachedFromWindow() {
+        presentationGovernor.suspend();
         audioConductor.suspend();
         super.onDetachedFromWindow();
     }
 
     public void onHostResume() {
         audioConductor.resume();
+        presentationGovernor.resume();
     }
 
     public void onHostPause() {
+        presentationGovernor.suspend();
         audioConductor.suspend();
         gameView.onHostPause();
     }
 
     public void release() {
+        presentationGovernor.release();
         audioConductor.release();
         featureRevealOverlay.release();
         symbolOverlay.release();
