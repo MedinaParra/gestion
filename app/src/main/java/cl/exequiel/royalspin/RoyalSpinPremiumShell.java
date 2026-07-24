@@ -19,9 +19,10 @@ public final class RoyalSpinPremiumShell extends FrameLayout {
         typographyOverlay = new PremiumTypographyOverlay(context, gameView);
         featureRevealOverlay = new PremiumFeatureRevealOverlay(context, gameView);
 
-        // Override the conservative software fallback: both overlays are composed on the GPU.
-        typographyOverlay.setLayerType(View.LAYER_TYPE_HARDWARE, null);
-        featureRevealOverlay.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        // Return both presentation views to the activity's normal hardware-accelerated canvas.
+        // This avoids the full-screen offscreen surfaces created by forced software/hardware layers.
+        typographyOverlay.setLayerType(View.LAYER_TYPE_NONE, null);
+        featureRevealOverlay.setLayerType(View.LAYER_TYPE_NONE, null);
 
         addView(gameView, new LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
