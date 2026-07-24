@@ -6,14 +6,15 @@ public final class LivingSymbolMath {
 
     public static float pulse(long nowMs, int seed, long periodMs, float min, float max) {
         long safePeriod = Math.max(1L, periodMs);
-        double phase = ((nowMs + seed * 173L) % safePeriod) / (double) safePeriod;
+        double phase = Math.floorMod(nowMs + seed * 173L, safePeriod) / (double) safePeriod;
         float wave = .5f + .5f * (float) Math.sin(phase * Math.PI * 2d);
-        return min + (max - min) * wave;
+        float value = min + (max - min) * wave;
+        return Math.max(Math.min(min, max), Math.min(Math.max(min, max), value));
     }
 
     public static float wave(long nowMs, int seed, long periodMs, float amplitude) {
         long safePeriod = Math.max(1L, periodMs);
-        double phase = ((nowMs + seed * 211L) % safePeriod) / (double) safePeriod;
+        double phase = Math.floorMod(nowMs + seed * 211L, safePeriod) / (double) safePeriod;
         return (float) Math.sin(phase * Math.PI * 2d) * amplitude;
     }
 
