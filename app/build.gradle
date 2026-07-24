@@ -10,8 +10,8 @@ android {
         applicationId 'cl.exequiel.royalspin'
         minSdk 24
         targetSdk 35
-        versionCode 16
-        versionName '1.6.0-free-spins-foundation'
+        versionCode 20
+        versionName '2.0.0-royal-free-spins'
     }
 
     buildTypes {
