@@ -23,6 +23,19 @@ jobs:
       - name: Configure Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Install Android build packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Configure Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Build APK before emulator image
+        run: gradle --no-daemon --max-workers=2 assembleDebug
+
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
@@ -33,18 +46,7 @@ jobs:
 
       - name: Install emulator image
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platform-tools" "emulator" \
-            "platforms;android-35" "build-tools;35.0.0" \
-            "system-images;android-29;default;x86_64"
-
-      - name: Configure Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.13'
-
-      - name: Build APK
-        run: gradle --no-daemon assembleDebug
+          sdkmanager "emulator" "system-images;android-29;default;x86_64"
 
       - name: Create and boot AVD
         id: boot
