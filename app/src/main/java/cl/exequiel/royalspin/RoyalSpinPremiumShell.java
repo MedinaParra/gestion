@@ -11,6 +11,7 @@ public final class RoyalSpinPremiumShell extends FrameLayout {
     private final PremiumTypographyOverlay typographyOverlay;
     private final PremiumSymbolOverlay symbolOverlay;
     private final PremiumFeatureRevealOverlay featureRevealOverlay;
+    private final PremiumVersionOverlay versionOverlay;
     private final PremiumAudioConductor audioConductor;
 
     public RoyalSpinPremiumShell(Context context, String demoMode) {
@@ -21,17 +22,20 @@ public final class RoyalSpinPremiumShell extends FrameLayout {
         typographyOverlay = new PremiumTypographyOverlay(context, gameView);
         symbolOverlay = new PremiumSymbolOverlay(context, gameView);
         featureRevealOverlay = new PremiumFeatureRevealOverlay(context, gameView);
+        versionOverlay = new PremiumVersionOverlay(context);
         audioConductor = new PremiumAudioConductor(gameView);
 
         // Keep every layer on the activity's normal hardware-accelerated canvas.
         typographyOverlay.setLayerType(View.LAYER_TYPE_NONE, null);
         symbolOverlay.setLayerType(View.LAYER_TYPE_NONE, null);
         featureRevealOverlay.setLayerType(View.LAYER_TYPE_NONE, null);
+        versionOverlay.setLayerType(View.LAYER_TYPE_NONE, null);
 
         addView(gameView, matchParent());
         addView(typographyOverlay, matchParent());
         addView(symbolOverlay, matchParent());
         addView(featureRevealOverlay, matchParent());
+        addView(versionOverlay, matchParent());
     }
 
     private static LayoutParams matchParent() {
