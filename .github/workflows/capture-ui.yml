@@ -8,6 +8,8 @@ jobs:
   capture:
     runs-on: ubuntu-22.04
     timeout-minutes: 40
+    env:
+      ANDROID_AVD_HOME: ${{ github.workspace }}/.android-avd
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -50,23 +52,30 @@ jobs:
         shell: bash
         run: |
           set +e
-          mkdir -p screenshots
+          mkdir -p screenshots "$ANDROID_AVD_HOME"
           {
             echo "PWD=$(pwd)"
             echo "ANDROID_HOME=$ANDROID_HOME"
+            echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME"
+            echo "EMULATOR=$ANDROID_HOME/emulator/emulator"
             sdkmanager --list_installed
             echo no | avdmanager create avd \
               --force --name royal_spin_v2 \
               --package "system-images;android-29;default;x86_64" \
-              --device "pixel_2"
+              --device "pixel_2" \
+              --path "$ANDROID_AVD_HOME/royal_spin_v2.avd"
             create_code=$?
             echo "AVD_CREATE_EXIT=$create_code"
-            find "$HOME/.android" -maxdepth 4 -type f -print || true
+            find "$ANDROID_AVD_HOME" -maxdepth 4 -type f -print || true
             if [ "$create_code" -ne 0 ]; then exit "$create_code"; fi
 
-            config="$HOME/.android/avd/royal_spin_v2.avd/config.ini"
+            config="$ANDROID_AVD_HOME/royal_spin_v2.avd/config.ini"
+            if [ ! -f "$config" ]; then
+              echo "MISSING_AVD_CONFIG=$config"
+              exit 1
+            fi
             printf '\nhw.cpu.ncore=2\nhw.ramSize=2048\nhw.gpu.enabled=yes\nhw.gpu.mode=swiftshader_indirect\n' >> "$config"
-            nohup emulator @royal_spin_v2 \
+            nohup "$ANDROID_HOME/emulator/emulator" @royal_spin_v2 \
               -no-window -no-snapshot -noaudio -no-boot-anim \
               -gpu swiftshader_indirect -accel on -memory 2048 \
               > screenshots/emulator.log 2>&1 &
@@ -171,7 +180,7 @@ jobs:
         run: |
           if [ ! -f screenshots/boot-ready ]; then
             echo "No image validation: AVD did not boot"
-            exit 0
+            exit 1
           fi
           python - <<'PY'
           import pathlib, struct
@@ -182,6 +191,7 @@ jobs:
               assert data.startswith(b'\x89PNG\r\n\x1a\n'), image
               width, height = struct.unpack('>II', data[16:24])
               assert width > 300 and height > 600, (image, width, height)
+              assert len(data) > 5000, f'Suspiciously small screenshot: {image} {len(data)} bytes'
               print(image.name, width, height, len(data))
           PY
 
