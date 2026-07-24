@@ -9,8 +9,7 @@ import java.lang.reflect.Field;
 
 /**
  * Applies hysteresis to optional typography effects and a temporary runtime reduced-motion mode.
- * The jewel renderer is never removed: in Lite it keeps the premium assets and only lowers their
- * internal animation/facet budget. The user's persisted accessibility preference is preserved.
+ * The Jewel Art renderer remains visible in every quality tier and only lowers its internal budget.
  */
 public final class AdaptivePresentationGovernor implements Choreographer.FrameCallback {
     private static final long SAMPLE_INTERVAL_NANOS = 250_000_000L;
@@ -20,7 +19,7 @@ public final class AdaptivePresentationGovernor implements Choreographer.FrameCa
 
     private final RoyalSpinV2View gameView;
     private final View typographyOverlay;
-    private final JewelArtOverlay jewelArtOverlay;
+    private final JewelArtFinalOverlay jewelArtOverlay;
     private final Field qualityField;
     private final Field phaseField;
     private final Field reducedField;
@@ -40,7 +39,7 @@ public final class AdaptivePresentationGovernor implements Choreographer.FrameCa
 
     public AdaptivePresentationGovernor(RoyalSpinV2View gameView,
                                         View typographyOverlay,
-                                        JewelArtOverlay jewelArtOverlay) {
+                                        JewelArtFinalOverlay jewelArtOverlay) {
         this.gameView = gameView;
         this.typographyOverlay = typographyOverlay;
         this.jewelArtOverlay = jewelArtOverlay;
@@ -177,7 +176,6 @@ public final class AdaptivePresentationGovernor implements Choreographer.FrameCa
         decorationSuspended = !visible;
         int state = visible ? View.VISIBLE : View.INVISIBLE;
         if (typographyOverlay.getVisibility() != state) typographyOverlay.setVisibility(state);
-        // Premium art remains visible in every quality tier; only its expensive passes are reduced.
         jewelArtOverlay.setPerformanceSuppressed(!visible);
     }
 
