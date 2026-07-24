@@ -1,4 +1,4 @@
-name: Capture Royal Spin 2.0 Cinematics
+name: Capture Royal Spin 4.0 Jewel Art
 
 on:
   pull_request:
@@ -28,10 +28,19 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Configure Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.13'
+      - name: Install verified Gradle 8.13
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://downloads.gradle.org/distributions/gradle-8.13-bin.zip"
+          archive="${RUNNER_TEMP}/gradle-8.13-bin.zip"
+          curl --fail --location --retry 8 --retry-delay 4 --retry-all-errors \
+            "$url" --output "$archive"
+          echo "20f1b1176237254a6fc204d8434196fa11a4cfb387567519c61556e8710aed78  $archive" \
+            | sha256sum --check --strict
+          rm -rf "${RUNNER_TEMP}/gradle-8.13"
+          unzip -q "$archive" -d "${RUNNER_TEMP}"
+          echo "${RUNNER_TEMP}/gradle-8.13/bin" >> "$GITHUB_PATH"
 
       - name: Build APK before emulator image
         run: gradle --no-daemon --max-workers=2 assembleDebug
@@ -60,22 +69,22 @@ jobs:
             echo "ANDROID_HOME=$ANDROID_HOME"
             echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME"
             echo no | avdmanager create avd \
-              --force --name royal_spin_v2 \
+              --force --name royal_spin_v4 \
               --package "system-images;android-29;default;x86_64" \
               --device "pixel_2" \
-              --path "$ANDROID_AVD_HOME/royal_spin_v2.avd"
+              --path "$ANDROID_AVD_HOME/royal_spin_v4.avd"
             create_code=$?
             echo "AVD_CREATE_EXIT=$create_code"
             find "$ANDROID_AVD_HOME" -maxdepth 4 -type f -print || true
             if [ "$create_code" -ne 0 ]; then exit "$create_code"; fi
 
-            config="$ANDROID_AVD_HOME/royal_spin_v2.avd/config.ini"
+            config="$ANDROID_AVD_HOME/royal_spin_v4.avd/config.ini"
             if [ ! -f "$config" ]; then
               echo "MISSING_AVD_CONFIG=$config"
               exit 1
             fi
             printf '\nhw.cpu.ncore=2\nhw.ramSize=2048\nhw.gpu.enabled=yes\nhw.gpu.mode=swiftshader_indirect\n' >> "$config"
-            nohup "$ANDROID_HOME/emulator/emulator" @royal_spin_v2 \
+            nohup "$ANDROID_HOME/emulator/emulator" @royal_spin_v4 \
               -no-window -no-snapshot -noaudio -no-boot-anim \
               -gpu swiftshader_indirect -accel on -memory 2048 \
               > screenshots/emulator.log 2>&1 &
@@ -151,18 +160,18 @@ jobs:
           }
 
           adb shell pm clear cl.exequiel.royalspin || true
-          capture_main 01-idle-v2.png 3
-          capture_qa bell       02-bell-rings.png
-          capture_qa bar        03-bar-locks.png
-          capture_qa seven      04-seven-energy.png
-          capture_qa diamond    05-diamond-prism.png
-          capture_qa wild       06-wild-royal-power.png
-          capture_qa feature    07-royal-feature-intro.png
-          capture_qa retrigger  08-wild-retrigger.png
-          capture_qa summary    09-feature-summary.png
+          capture_main 01-idle-jewel-art.png 4
+          capture_qa bell       02-bell-jewel-rings.png
+          capture_qa bar        03-bar-vault-locks.png
+          capture_qa seven      04-ruby-seven-energy.png
+          capture_qa diamond    05-sapphire-prism.png
+          capture_qa wild       06-royal-wild-crown.png
+          capture_qa feature    07-jewel-feature-intro.png
+          capture_qa retrigger  08-jewel-wild-retrigger.png
+          capture_qa summary    09-jewel-feature-summary.png
 
           adb shell pm clear cl.exequiel.royalspin || true
-          capture_main 10-free-spins-hud.png 21 --es demo feature
+          capture_main 10-free-spins-jewel-hud.png 21 --es demo feature
 
           adb logcat -d > screenshots/logcat.txt || true
           if grep -q "FATAL EXCEPTION" screenshots/logcat.txt; then
@@ -195,7 +204,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: RoyalSpin-v2.0-cinematics
+          name: RoyalSpin-v4.0-jewel-art-captures
           path: screenshots/**
           if-no-files-found: error
 
@@ -203,6 +212,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: RoyalSpin-v2.0-emulator-apk
+          name: RoyalSpin-v4.0-jewel-art-emulator-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
