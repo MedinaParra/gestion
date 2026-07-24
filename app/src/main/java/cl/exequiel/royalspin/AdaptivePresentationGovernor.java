@@ -1,5 +1,6 @@
 package cl.exequiel.royalspin;
 
+import android.content.SharedPreferences;
 import android.os.SystemClock;
 import android.view.Choreographer;
 import android.view.View;
@@ -7,13 +8,14 @@ import android.view.View;
 import java.lang.reflect.Field;
 
 /**
- * Applies hysteresis to presentation-only overlays. Mathematical rendering and controls remain
- * active at all times; only decorative layers are suspended when sustained Lite mode is detected.
+ * Applies hysteresis to presentation-only overlays and a temporary runtime reduced-motion mode.
+ * The user's persisted accessibility preference is preserved exactly as selected.
  */
 public final class AdaptivePresentationGovernor implements Choreographer.FrameCallback {
     private static final long SAMPLE_INTERVAL_NANOS = 250_000_000L;
-    private static final long LITE_CONFIRM_MS = 650L;
-    private static final long RECOVERY_CONFIRM_MS = 2600L;
+    private static final long LITE_CONFIRM_MS = 500L;
+    private static final long RECOVERY_CONFIRM_MS = 1800L;
+    private static final long RUNTIME_MOTION_RECOVERY_MS = 300L;
 
     private final RoyalSpinV2View gameView;
     private final View typographyOverlay;
@@ -21,13 +23,19 @@ public final class AdaptivePresentationGovernor implements Choreographer.FrameCa
     private final Field qualityField;
     private final Field phaseField;
     private final Field reducedField;
+    private final Field prefsField;
 
     private boolean running;
     private boolean suspended;
     private boolean decorationSuspended;
+    private boolean preferenceInitialized;
+    private boolean userReducedMotion;
+    private boolean automaticReducedMotion;
     private long lastSampleNanos;
     private long liteSince;
     private long healthySince;
+    private long safePhaseSince;
+    private String lastPhase = "";
 
     public AdaptivePresentationGovernor(RoyalSpinV2View gameView,
                                         View typographyOverlay,
@@ -38,6 +46,7 @@ public final class AdaptivePresentationGovernor implements Choreographer.FrameCa
         qualityField = field("qualityTier");
         phaseField = field("phase");
         reducedField = field("reducedMotion");
+        prefsField = field("prefs");
     }
 
     private static Field field(String name) {
@@ -64,6 +73,7 @@ public final class AdaptivePresentationGovernor implements Choreographer.FrameCa
             running = false;
             Choreographer.getInstance().removeFrameCallback(this);
         }
+        restoreUserMotionPreference();
     }
 
     public void resume() {
@@ -75,6 +85,7 @@ public final class AdaptivePresentationGovernor implements Choreographer.FrameCa
         running = false;
         suspended = true;
         Choreographer.getInstance().removeFrameCallback(this);
+        restoreUserMotionPreference();
         setDecorationsVisible(true);
     }
 
@@ -90,29 +101,78 @@ public final class AdaptivePresentationGovernor implements Choreographer.FrameCa
 
     private void evaluate(long now) {
         int quality = readInt(qualityField, 1);
-        boolean reduced = readBoolean(reducedField, false);
+        boolean currentReduced = readBoolean(reducedField, false);
         String phase = readString(phaseField, "IDLE");
+        boolean safePhase = "IDLE".equals(phase) || "FEATURE_READY".equals(phase);
         boolean intensivePhase = phase.endsWith("SPINNING") || phase.endsWith("REVEALING")
                 || "FEATURE_INTRO".equals(phase) || "RETRIGGER".equals(phase)
                 || "FEATURE_SUMMARY".equals(phase);
 
-        boolean shouldProtect = reduced || (quality <= 0 && intensivePhase);
-        if (shouldProtect) {
-            healthySince = 0L;
-            if (liteSince == 0L) liteSince = now;
-            if (!decorationSuspended && now - liteSince >= LITE_CONFIRM_MS) {
-                setDecorationsVisible(false);
-            }
-            return;
+        if (!preferenceInitialized) {
+            preferenceInitialized = true;
+            userReducedMotion = currentReduced;
+            lastPhase = phase;
+        } else if (!automaticReducedMotion && safePhase && currentReduced != userReducedMotion) {
+            // A real user toggle is only accepted outside automatic protection.
+            userReducedMotion = currentReduced;
         }
 
-        liteSince = 0L;
-        if (!decorationSuspended) return;
-        boolean safeRecoveryPhase = "IDLE".equals(phase) || "FEATURE_READY".equals(phase);
-        if (quality >= 1 && safeRecoveryPhase) {
-            if (healthySince == 0L) healthySince = now;
-            if (now - healthySince >= RECOVERY_CONFIRM_MS) setDecorationsVisible(true);
-        } else healthySince = 0L;
+        boolean liteIntensive = quality <= 0 && intensivePhase && !userReducedMotion;
+        if (liteIntensive) {
+            healthySince = 0L;
+            safePhaseSince = 0L;
+            if (liteSince == 0L) liteSince = now;
+            if (now - liteSince >= LITE_CONFIRM_MS) {
+                if (!automaticReducedMotion) enableAutomaticReducedMotion();
+                if (!decorationSuspended) setDecorationsVisible(false);
+            }
+        } else {
+            liteSince = 0L;
+            if (safePhase) {
+                if (safePhaseSince == 0L) safePhaseSince = now;
+                if (automaticReducedMotion
+                        && now - safePhaseSince >= RUNTIME_MOTION_RECOVERY_MS) {
+                    restoreUserMotionPreference();
+                }
+            } else safePhaseSince = 0L;
+
+            if (decorationSuspended && safePhase) {
+                if (healthySince == 0L) healthySince = now;
+                if (now - healthySince >= RECOVERY_CONFIRM_MS) setDecorationsVisible(true);
+            } else if (!safePhase) healthySince = 0L;
+        }
+
+        // The game persists state at phase boundaries; overwrite only the preference key with the
+        // user's genuine choice so automatic Lite mode never becomes a saved accessibility setting.
+        if (automaticReducedMotion && !phase.equals(lastPhase)) preserveUserPreference();
+        lastPhase = phase;
+    }
+
+    private void enableAutomaticReducedMotion() {
+        automaticReducedMotion = true;
+        writeReducedMotion(true);
+        preserveUserPreference();
+    }
+
+    private void restoreUserMotionPreference() {
+        if (!preferenceInitialized || !automaticReducedMotion) return;
+        automaticReducedMotion = false;
+        writeReducedMotion(userReducedMotion);
+        preserveUserPreference();
+    }
+
+    private void writeReducedMotion(boolean value) {
+        if (reducedField == null) return;
+        try { reducedField.setBoolean(gameView, value); }
+        catch (IllegalAccessException ignored) { }
+    }
+
+    private void preserveUserPreference() {
+        Object value = readObject(prefsField);
+        if (!(value instanceof SharedPreferences)) return;
+        ((SharedPreferences) value).edit()
+                .putBoolean("reduced_motion", userReducedMotion)
+                .apply();
     }
 
     private void setDecorationsVisible(boolean visible) {
