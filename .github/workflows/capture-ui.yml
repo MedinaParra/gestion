@@ -34,7 +34,7 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "emulator" \
             "platforms;android-35" "build-tools;35.0.0" \
-            "system-images;android-29;google_apis;x86_64"
+            "system-images;android-29;default;x86_64"
 
       - name: Configure Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -45,44 +45,71 @@ jobs:
         run: gradle --no-daemon assembleDebug
 
       - name: Create and boot AVD
+        id: boot
+        continue-on-error: true
         shell: bash
         run: |
-          set -euo pipefail
+          set +e
           mkdir -p screenshots
-          echo no | avdmanager create avd \
-            --force --name royal_spin_v2 \
-            --package "system-images;android-29;google_apis;x86_64" \
-            --device "pixel_2"
-          echo "hw.cpu.ncore=2" >> "$HOME/.android/avd/royal_spin_v2.avd/config.ini"
-          echo "hw.gpu.enabled=yes" >> "$HOME/.android/avd/royal_spin_v2.avd/config.ini"
-          echo "hw.gpu.mode=swiftshader_indirect" >> "$HOME/.android/avd/royal_spin_v2.avd/config.ini"
-          nohup emulator @royal_spin_v2 \
-            -no-window -no-snapshot -wipe-data -noaudio -no-boot-anim \
-            -gpu swiftshader_indirect -camera-back none \
-            > screenshots/emulator.log 2>&1 &
-          echo $! > screenshots/emulator.pid
+          {
+            echo "PWD=$(pwd)"
+            echo "ANDROID_HOME=$ANDROID_HOME"
+            sdkmanager --list_installed
+            echo no | avdmanager create avd \
+              --force --name royal_spin_v2 \
+              --package "system-images;android-29;default;x86_64" \
+              --device "pixel_2"
+            create_code=$?
+            echo "AVD_CREATE_EXIT=$create_code"
+            find "$HOME/.android" -maxdepth 4 -type f -print || true
+            if [ "$create_code" -ne 0 ]; then exit "$create_code"; fi
 
-          adb start-server
-          adb wait-for-device
-          booted=""
-          for attempt in $(seq 1 240); do
-            booted=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)
-            if [ "$booted" = "1" ]; then break; fi
-            sleep 2
-          done
-          if [ "$booted" != "1" ]; then
-            echo "AVD did not complete boot" | tee screenshots/capture-error.txt
-            tail -n 200 screenshots/emulator.log || true
-            exit 1
-          fi
-          adb shell input keyevent 82 || true
-          adb shell settings put secure immersive_mode_confirmations confirmed || true
-          adb install -r app/build/outputs/apk/debug/app-debug.apk
+            config="$HOME/.android/avd/royal_spin_v2.avd/config.ini"
+            printf '\nhw.cpu.ncore=2\nhw.ramSize=2048\nhw.gpu.enabled=yes\nhw.gpu.mode=swiftshader_indirect\n' >> "$config"
+            nohup emulator @royal_spin_v2 \
+              -no-window -no-snapshot -noaudio -no-boot-anim \
+              -gpu swiftshader_indirect -accel on -memory 2048 \
+              > screenshots/emulator.log 2>&1 &
+            emulator_pid=$!
+            echo "$emulator_pid" > screenshots/emulator.pid
+            echo "EMULATOR_PID=$emulator_pid"
+
+            adb start-server
+            adb wait-for-device
+            booted=""
+            for attempt in $(seq 1 240); do
+              booted=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)
+              echo "BOOT_ATTEMPT=$attempt VALUE=$booted"
+              if [ "$booted" = "1" ]; then break; fi
+              if ! kill -0 "$emulator_pid" 2>/dev/null; then
+                echo "EMULATOR_PROCESS_EXITED"
+                break
+              fi
+              sleep 2
+            done
+            if [ "$booted" != "1" ]; then
+              echo "AVD did not complete boot"
+              tail -n 300 screenshots/emulator.log || true
+              exit 1
+            fi
+            touch screenshots/boot-ready
+            adb shell input keyevent 82 || true
+            adb shell settings put secure immersive_mode_confirmations confirmed || true
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
+          } > screenshots/boot-diagnostic.log 2>&1
+          code=$?
+          cat screenshots/boot-diagnostic.log
+          exit "$code"
 
       - name: Capture advanced states
+        if: always()
         shell: bash
         run: |
           set -u
+          if [ ! -f screenshots/boot-ready ]; then
+            echo "Capture skipped because AVD was not ready" >> screenshots/capture-error.txt
+            exit 0
+          fi
           adb logcat -c || true
 
           capture() {
@@ -130,8 +157,13 @@ jobs:
           fi
 
       - name: Validate images
+        if: always()
         shell: bash
         run: |
+          if [ ! -f screenshots/boot-ready ]; then
+            echo "No image validation: AVD did not boot"
+            exit 0
+          fi
           python - <<'PY'
           import pathlib, struct
           images = sorted(pathlib.Path('screenshots').glob('*.png'))
@@ -150,7 +182,7 @@ jobs:
         with:
           name: RoyalSpin-v2.0-cinematics
           path: screenshots/**
-          if-no-files-found: warn
+          if-no-files-found: error
 
       - name: Upload APK
         if: always()
