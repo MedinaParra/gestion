@@ -12,6 +12,7 @@ public final class RoyalSpinPremiumShell extends FrameLayout {
     private final PremiumSymbolOverlay symbolOverlay;
     private final PremiumFeatureRevealOverlay featureRevealOverlay;
     private final PremiumVersionOverlay versionOverlay;
+    private final PremiumReleaseFooterOverlay releaseFooterOverlay;
     private final PremiumAudioConductor audioConductor;
     private final AdaptivePresentationGovernor presentationGovernor;
 
@@ -24,6 +25,7 @@ public final class RoyalSpinPremiumShell extends FrameLayout {
         symbolOverlay = new PremiumSymbolOverlay(context, gameView);
         featureRevealOverlay = new PremiumFeatureRevealOverlay(context, gameView);
         versionOverlay = new PremiumVersionOverlay(context);
+        releaseFooterOverlay = new PremiumReleaseFooterOverlay(context);
         audioConductor = new PremiumAudioConductor(gameView);
         presentationGovernor = new AdaptivePresentationGovernor(
                 gameView, typographyOverlay, symbolOverlay);
@@ -33,12 +35,14 @@ public final class RoyalSpinPremiumShell extends FrameLayout {
         symbolOverlay.setLayerType(View.LAYER_TYPE_NONE, null);
         featureRevealOverlay.setLayerType(View.LAYER_TYPE_NONE, null);
         versionOverlay.setLayerType(View.LAYER_TYPE_NONE, null);
+        releaseFooterOverlay.setLayerType(View.LAYER_TYPE_NONE, null);
 
         addView(gameView, matchParent());
         addView(typographyOverlay, matchParent());
         addView(symbolOverlay, matchParent());
         addView(featureRevealOverlay, matchParent());
         addView(versionOverlay, matchParent());
+        addView(releaseFooterOverlay, matchParent());
     }
 
     private static LayoutParams matchParent() {
