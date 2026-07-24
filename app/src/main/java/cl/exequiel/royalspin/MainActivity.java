@@ -8,6 +8,7 @@ import android.view.WindowManager;
 
 public class MainActivity extends Activity {
     private RoyalSpinV2View gameView;
+    private RoyalVfxShowcaseView showcaseView;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -16,6 +17,14 @@ public class MainActivity extends Activity {
                 WindowManager.LayoutParams.FLAG_FULLSCREEN);
         getWindow().setNavigationBarColor(0xFF020205);
         applyImmersiveMode();
+
+        String qaScene = getIntent() == null ? null : getIntent().getStringExtra("qa");
+        if (qaScene != null && !qaScene.trim().isEmpty()) {
+            showcaseView = new RoyalVfxShowcaseView(this, qaScene);
+            setContentView(showcaseView);
+            return;
+        }
+
         String demoMode = getIntent() == null ? null : getIntent().getStringExtra("demo");
         gameView = new RoyalSpinV2View(this, demoMode);
         setContentView(gameView);
@@ -33,6 +42,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onDestroy() {
         if (gameView != null) gameView.release();
+        if (showcaseView != null) showcaseView.release();
         super.onDestroy();
     }
 
