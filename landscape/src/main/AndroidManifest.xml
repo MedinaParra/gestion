@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <application
+        android:allowBackup="false"
+        android:usesCleartextTraffic="false"
+        android:theme="@style/Theme.RoyalSpinLandscape"
+        android:label="Royal Spin Landscape"
+        android:icon="@drawable/ic_launcher">
+        <activity
+            android:name=".LandscapeMainActivity"
+            android:exported="true"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:keepScreenOn="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
