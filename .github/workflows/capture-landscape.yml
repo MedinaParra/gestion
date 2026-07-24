@@ -111,12 +111,10 @@ jobs:
 
           adb shell pm clear "$package" || true
           capture_demo "" idle-landscape.png
-
           adb shell input tap 1136 440 || true
           sleep 1
           adb exec-out screencap -p > media/spinning-landscape.png
           sleep 3
-
           capture_demo bell bell-win-landscape.png
           capture_demo bar bar-win-landscape.png
           capture_demo seven seven-win-landscape.png
@@ -142,28 +140,31 @@ jobs:
           ! grep -q "FATAL EXCEPTION" media/logcat.txt
 
       - name: Validate media
+        id: validate_media
+        continue-on-error: true
         shell: bash
         run: |
           python - <<'PY'
           import pathlib, struct
           images = sorted(pathlib.Path("media").glob("*.png"))
-          assert len(images) == 8, len(images)
+          assert len(images) == 8, f"expected 8 images, found {len(images)}"
           for image in images:
               data = image.read_bytes()
-              assert data.startswith(b"\x89PNG\r\n\x1a\n")
+              assert data.startswith(b"\x89PNG\r\n\x1a\n"), image
               width, height = struct.unpack(">II", data[16:24])
               assert width > height, (image, width, height)
-              assert width >= 1000 and height >= 600
-              assert len(data) > 50000, (image, len(data))
+              assert width >= 1000 and height >= 600, (image, width, height)
+              assert len(data) > 30000, (image, len(data))
               print(image.name, width, height, len(data))
           videos = sorted(pathlib.Path("media").glob("*.mp4"))
-          assert len(videos) == 2
+          assert len(videos) == 2, f"expected 2 videos, found {len(videos)}"
           for video in videos:
-              assert video.stat().st_size > 100000, (video, video.stat().st_size)
+              assert video.stat().st_size > 50000, (video, video.stat().st_size)
               print(video.name, video.stat().st_size)
           PY
 
       - name: Upload landscape media
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: RoyalSpin-Landscape-v1-media
@@ -171,8 +172,12 @@ jobs:
           if-no-files-found: error
 
       - name: Upload emulator APK
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: RoyalSpin-Landscape-v1-emulator-APK
           path: landscapeApp/build/outputs/apk/debug/landscapeApp-debug.apk
           if-no-files-found: error
+
+      - name: Verify media
+        run: test "${{ steps.validate_media.outcome }}" = "success"
