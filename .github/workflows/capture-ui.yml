@@ -18,12 +18,23 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Configure Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
             | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm || true
+
+      - name: Install emulator image
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "emulator" \
+            "platforms;android-35" "build-tools;35.0.0" \
+            "system-images;android-29;google_apis;x86_64"
 
       - name: Configure Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -33,68 +44,105 @@ jobs:
       - name: Build APK
         run: gradle --no-daemon assembleDebug
 
+      - name: Create and boot AVD
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p screenshots
+          echo no | avdmanager create avd \
+            --force --name royal_spin_v2 \
+            --package "system-images;android-29;google_apis;x86_64" \
+            --device "pixel_2"
+          echo "hw.cpu.ncore=2" >> "$HOME/.android/avd/royal_spin_v2.avd/config.ini"
+          echo "hw.gpu.enabled=yes" >> "$HOME/.android/avd/royal_spin_v2.avd/config.ini"
+          echo "hw.gpu.mode=swiftshader_indirect" >> "$HOME/.android/avd/royal_spin_v2.avd/config.ini"
+          nohup emulator @royal_spin_v2 \
+            -no-window -no-snapshot -wipe-data -noaudio -no-boot-anim \
+            -gpu swiftshader_indirect -camera-back none \
+            > screenshots/emulator.log 2>&1 &
+          echo $! > screenshots/emulator.pid
+
+          adb start-server
+          adb wait-for-device
+          booted=""
+          for attempt in $(seq 1 240); do
+            booted=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)
+            if [ "$booted" = "1" ]; then break; fi
+            sleep 2
+          done
+          if [ "$booted" != "1" ]; then
+            echo "AVD did not complete boot" | tee screenshots/capture-error.txt
+            tail -n 200 screenshots/emulator.log || true
+            exit 1
+          fi
+          adb shell input keyevent 82 || true
+          adb shell settings put secure immersive_mode_confirmations confirmed || true
+          adb install -r app/build/outputs/apk/debug/app-debug.apk
+
       - name: Capture advanced states
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 29
-          arch: x86_64
-          profile: pixel_2
-          cores: 2
-          disable-animations: false
-          emulator-boot-timeout: 900
-          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: |
-            set -u
-            mkdir -p screenshots
-            adb install -r app/build/outputs/apk/debug/app-debug.apk
-            adb shell settings put secure immersive_mode_confirmations confirmed || true
-            adb logcat -c || true
+        shell: bash
+        run: |
+          set -u
+          adb logcat -c || true
 
-            capture() {
-              mode="$1"
-              file="$2"
-              delay="$3"
-              adb shell am force-stop cl.exequiel.royalspin || true
-              if [ -z "$mode" ]; then
-                adb shell am start -W -n cl.exequiel.royalspin/.MainActivity || true
-              else
-                adb shell am start -W -n cl.exequiel.royalspin/.MainActivity --es demo "$mode" || true
-              fi
-              sleep "$delay"
-              adb exec-out screencap -p > "screenshots/$file" || true
-            }
-
-            capture ""        01-idle-v2.png                 3
-            capture bell      02-bell-rings.png              8
-            capture bar       03-bar-locks.png               8
-            capture seven     04-seven-energy.png            8
-            capture diamond   05-diamond-prism.png           8
-            capture five      06-five-wild-royal-trigger.png 8
-
+          capture() {
+            mode="$1"
+            file="$2"
+            delay="$3"
             adb shell am force-stop cl.exequiel.royalspin || true
-            adb shell pm clear cl.exequiel.royalspin || true
-            adb shell am start -W -n cl.exequiel.royalspin/.MainActivity --es demo feature || true
-            sleep 8
-            adb exec-out screencap -p > screenshots/07-feature-trigger.png || true
-            sleep 5
-            adb exec-out screencap -p > screenshots/08-royal-feature-intro.png || true
-            sleep 8
-            adb exec-out screencap -p > screenshots/09-free-spins-hud.png || true
-
-            adb shell am force-stop cl.exequiel.royalspin || true
-            adb shell pm clear cl.exequiel.royalspin || true
-            adb shell am start -W -n cl.exequiel.royalspin/.MainActivity --es demo retrigger || true
-            sleep 11
-            adb exec-out screencap -p > screenshots/10-wild-retrigger.png || true
-
-            adb logcat -d > screenshots/logcat.txt || true
-            for file in screenshots/*.png; do
-              if [ ! -s "$file" ]; then echo "EMPTY $file" >> screenshots/capture-warnings.txt; fi
-            done
-            if grep -q "FATAL EXCEPTION" screenshots/logcat.txt; then
-              grep -A 40 "FATAL EXCEPTION" screenshots/logcat.txt > screenshots/runtime-summary.txt
-              exit 1
+            if [ -z "$mode" ]; then
+              adb shell am start -W -n cl.exequiel.royalspin/.MainActivity || true
+            else
+              adb shell am start -W -n cl.exequiel.royalspin/.MainActivity --es demo "$mode" || true
             fi
+            sleep "$delay"
+            adb exec-out screencap -p > "screenshots/$file"
+            test -s "screenshots/$file"
+          }
+
+          capture ""        01-idle-v2.png                 3
+          capture bell      02-bell-rings.png              8
+          capture bar       03-bar-locks.png               8
+          capture seven     04-seven-energy.png            8
+          capture diamond   05-diamond-prism.png           8
+          capture five      06-five-wild-royal-trigger.png 8
+
+          adb shell am force-stop cl.exequiel.royalspin || true
+          adb shell pm clear cl.exequiel.royalspin || true
+          adb shell am start -W -n cl.exequiel.royalspin/.MainActivity --es demo feature
+          sleep 8
+          adb exec-out screencap -p > screenshots/07-feature-trigger.png
+          sleep 5
+          adb exec-out screencap -p > screenshots/08-royal-feature-intro.png
+          sleep 8
+          adb exec-out screencap -p > screenshots/09-free-spins-hud.png
+
+          adb shell am force-stop cl.exequiel.royalspin || true
+          adb shell pm clear cl.exequiel.royalspin || true
+          adb shell am start -W -n cl.exequiel.royalspin/.MainActivity --es demo retrigger
+          sleep 11
+          adb exec-out screencap -p > screenshots/10-wild-retrigger.png
+
+          adb logcat -d > screenshots/logcat.txt || true
+          if grep -q "FATAL EXCEPTION" screenshots/logcat.txt; then
+            grep -A 50 "FATAL EXCEPTION" screenshots/logcat.txt > screenshots/runtime-summary.txt
+            exit 1
+          fi
+
+      - name: Validate images
+        shell: bash
+        run: |
+          python - <<'PY'
+          import pathlib, struct
+          images = sorted(pathlib.Path('screenshots').glob('*.png'))
+          assert len(images) == 10, f'Expected 10 screenshots, found {len(images)}'
+          for image in images:
+              data = image.read_bytes()
+              assert data.startswith(b'\x89PNG\r\n\x1a\n'), image
+              width, height = struct.unpack('>II', data[16:24])
+              assert width > 300 and height > 600, (image, width, height)
+              print(image.name, width, height, len(data))
+          PY
 
       - name: Upload screenshots and runtime log
         if: always()
