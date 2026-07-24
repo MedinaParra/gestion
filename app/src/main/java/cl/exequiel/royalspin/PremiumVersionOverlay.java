@@ -9,7 +9,7 @@ import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.view.View;
 
-/** Static opaque release plate that replaces every inherited version label. */
+/** Static opaque release plate that replaces inherited version labels. */
 public final class PremiumVersionOverlay extends View {
     private static final float W = 360f;
     private static final float H = 800f;
@@ -32,25 +32,25 @@ public final class PremiumVersionOverlay extends View {
         canvas.translate(offsetX, offsetY);
         canvas.scale(scale, scale);
 
-        rect.set(88f, 67.5f, 272f, 89.5f);
+        rect.set(105f, 80f, 255f, 96f);
         p.setStyle(Paint.Style.FILL);
         p.setShader(new LinearGradient(rect.left, rect.top, rect.right, rect.bottom,
-                new int[]{0xFF020308, 0xFF190D22, 0xFF020308}, null, Shader.TileMode.CLAMP));
-        canvas.drawRoundRect(rect, 10f, 10f, p);
+                new int[]{0xFF020308, 0xFF21102B, 0xFF020308}, null, Shader.TileMode.CLAMP));
+        canvas.drawRoundRect(rect, 8f, 8f, p);
         p.setShader(null);
 
         p.setStyle(Paint.Style.STROKE);
-        p.setStrokeWidth(1.15f);
+        p.setStrokeWidth(1.1f);
         p.setColor(0xFFFFD76A);
-        canvas.drawRoundRect(rect, 10f, 10f, p);
+        canvas.drawRoundRect(rect, 8f, 8f, p);
 
         p.setStyle(Paint.Style.FILL);
         p.setTypeface(Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD));
         p.setTextAlign(Paint.Align.CENTER);
-        p.setTextSize(6.9f);
+        p.setTextSize(6.4f);
         p.setColor(0xFFFFE7A0);
         p.setShadowLayer(3f, 0f, 1f, 0x88000000);
-        canvas.drawText("v3.0 · ROADMAP COMPLETO", 180f, 82.3f, p);
+        canvas.drawText("v4.0 · JEWEL ART", 180f, 91.2f, p);
         p.clearShadowLayer();
         canvas.restore();
     }

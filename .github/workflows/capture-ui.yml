@@ -1,4 +1,4 @@
-name: Capture Royal Spin 2.0 Cinematics
+name: Capture Royal Spin 4.0 Jewel Art
 
 on:
   pull_request:
@@ -7,7 +7,7 @@ on:
 jobs:
   capture:
     runs-on: ubuntu-22.04
-    timeout-minutes: 40
+    timeout-minutes: 42
     env:
       ANDROID_AVD_HOME: ${{ github.workspace }}/.android-avd
     steps:
@@ -28,10 +28,19 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Configure Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.13'
+      - name: Install verified Gradle 8.13
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://downloads.gradle.org/distributions/gradle-8.13-bin.zip"
+          archive="${RUNNER_TEMP}/gradle-8.13-bin.zip"
+          curl --fail --location --retry 8 --retry-delay 4 --retry-all-errors \
+            "$url" --output "$archive"
+          echo "20f1b1176237254a6fc204d8434196fa11a4cfb387567519c61556e8710aed78  $archive" \
+            | sha256sum --check --strict
+          rm -rf "${RUNNER_TEMP}/gradle-8.13"
+          unzip -q "$archive" -d "${RUNNER_TEMP}"
+          echo "${RUNNER_TEMP}/gradle-8.13/bin" >> "$GITHUB_PATH"
 
       - name: Build APK before emulator image
         run: gradle --no-daemon --max-workers=2 assembleDebug
@@ -45,8 +54,7 @@ jobs:
           ls -l /dev/kvm || true
 
       - name: Install emulator image
-        run: |
-          sdkmanager "emulator" "system-images;android-29;default;x86_64"
+        run: sdkmanager "emulator" "system-images;android-29;default;x86_64"
 
       - name: Create and boot AVD
         id: boot
@@ -54,61 +62,36 @@ jobs:
         shell: bash
         run: |
           set +e
-          mkdir -p screenshots "$ANDROID_AVD_HOME"
+          mkdir -p screenshots recordings "$ANDROID_AVD_HOME"
           {
-            echo "PWD=$(pwd)"
-            echo "ANDROID_HOME=$ANDROID_HOME"
-            echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME"
             echo no | avdmanager create avd \
-              --force --name royal_spin_v2 \
+              --force --name royal_spin_v4 \
               --package "system-images;android-29;default;x86_64" \
               --device "pixel_2" \
-              --path "$ANDROID_AVD_HOME/royal_spin_v2.avd"
+              --path "$ANDROID_AVD_HOME/royal_spin_v4.avd"
             create_code=$?
             echo "AVD_CREATE_EXIT=$create_code"
-            find "$ANDROID_AVD_HOME" -maxdepth 4 -type f -print || true
             if [ "$create_code" -ne 0 ]; then exit "$create_code"; fi
-
-            config="$ANDROID_AVD_HOME/royal_spin_v2.avd/config.ini"
-            if [ ! -f "$config" ]; then
-              echo "MISSING_AVD_CONFIG=$config"
-              exit 1
-            fi
+            config="$ANDROID_AVD_HOME/royal_spin_v4.avd/config.ini"
+            test -f "$config" || exit 1
             printf '\nhw.cpu.ncore=2\nhw.ramSize=2048\nhw.gpu.enabled=yes\nhw.gpu.mode=swiftshader_indirect\n' >> "$config"
-            nohup "$ANDROID_HOME/emulator/emulator" @royal_spin_v2 \
+            nohup "$ANDROID_HOME/emulator/emulator" @royal_spin_v4 \
               -no-window -no-snapshot -noaudio -no-boot-anim \
               -gpu swiftshader_indirect -accel on -memory 2048 \
               > screenshots/emulator.log 2>&1 &
             emulator_pid=$!
             echo "$emulator_pid" > screenshots/emulator.pid
-            echo "EMULATOR_PID=$emulator_pid"
-
             adb start-server
-            if ! timeout 180 adb wait-for-device; then
-              echo "ADB_DEVICE_TIMEOUT"
-              adb devices -l || true
-              tail -n 300 screenshots/emulator.log || true
-              kill "$emulator_pid" 2>/dev/null || true
-              exit 1
-            fi
+            timeout 180 adb wait-for-device || exit 1
             booted=""
             for attempt in $(seq 1 240); do
               booted=$(timeout 10 adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)
               echo "BOOT_ATTEMPT=$attempt VALUE=$booted"
-              if [ "$booted" = "1" ]; then break; fi
-              if ! kill -0 "$emulator_pid" 2>/dev/null; then
-                echo "EMULATOR_PROCESS_EXITED"
-                break
-              fi
+              [ "$booted" = "1" ] && break
+              kill -0 "$emulator_pid" 2>/dev/null || break
               sleep 2
             done
-            if [ "$booted" != "1" ]; then
-              echo "AVD did not complete boot"
-              adb devices -l || true
-              tail -n 300 screenshots/emulator.log || true
-              kill "$emulator_pid" 2>/dev/null || true
-              exit 1
-            fi
+            [ "$booted" = "1" ] || exit 1
             touch screenshots/boot-ready
             adb shell input keyevent 82 || true
             adb shell settings put secure immersive_mode_confirmations confirmed || true
@@ -118,16 +101,21 @@ jobs:
           cat screenshots/boot-diagnostic.log
           exit "$code"
 
-      - name: Capture deterministic cinematic states
+      - name: Capture deterministic jewel-art states
         if: always()
         shell: bash
         run: |
-          set -u
-          if [ ! -f screenshots/boot-ready ]; then
-            echo "Capture skipped because AVD was not ready" >> screenshots/capture-error.txt
-            exit 0
-          fi
+          set -euo pipefail
+          test -f screenshots/boot-ready
           adb logcat -c || true
+
+          take_png() {
+            file="$1"
+            adb exec-out screencap -p > "screenshots/$file"
+            bytes=$(stat -c%s "screenshots/$file" 2>/dev/null || echo 0)
+            echo "CAPTURE $file BYTES=$bytes"
+            [ "$bytes" -ge 50000 ]
+          }
 
           capture_main() {
             file="$1"
@@ -136,8 +124,11 @@ jobs:
             adb shell am force-stop cl.exequiel.royalspin || true
             adb shell am start -W -n cl.exequiel.royalspin/.MainActivity "$@"
             sleep "$delay"
-            adb exec-out screencap -p > "screenshots/$file"
-            test -s "screenshots/$file"
+            if ! take_png "$file"; then
+              echo "Retrying suspicious main capture: $file"
+              sleep 5
+              take_png "$file"
+            fi
           }
 
           capture_qa() {
@@ -145,39 +136,59 @@ jobs:
             file="$2"
             adb shell am force-stop cl.exequiel.royalspin || true
             adb shell am start -W -n cl.exequiel.royalspin/.MainActivity --es qa "$scene"
-            sleep 2
-            adb exec-out screencap -p > "screenshots/$file"
-            test -s "screenshots/$file"
+            sleep 4
+            if ! take_png "$file"; then
+              echo "Retrying suspicious QA capture: $file"
+              adb shell am force-stop cl.exequiel.royalspin || true
+              adb shell am start -W -n cl.exequiel.royalspin/.MainActivity --es qa "$scene"
+              sleep 5
+              take_png "$file"
+            fi
+          }
+
+          record_main() {
+            remote="$1"
+            local_file="$2"
+            shift 2
+            adb shell am force-stop cl.exequiel.royalspin || true
+            adb shell am start -W -n cl.exequiel.royalspin/.MainActivity "$@"
+            sleep 3
+            adb shell rm -f "$remote" || true
+            adb shell screenrecord --time-limit 8 --bit-rate 4000000 "$remote"
+            adb pull "$remote" "$local_file"
+            test $(stat -c%s "$local_file") -gt 100000
           }
 
           adb shell pm clear cl.exequiel.royalspin || true
-          capture_main 01-idle-v2.png 3
-          capture_qa bell       02-bell-rings.png
-          capture_qa bar        03-bar-locks.png
-          capture_qa seven      04-seven-energy.png
-          capture_qa diamond    05-diamond-prism.png
-          capture_qa wild       06-wild-royal-power.png
-          capture_qa feature    07-royal-feature-intro.png
-          capture_qa retrigger  08-wild-retrigger.png
-          capture_qa summary    09-feature-summary.png
+          capture_main 01-idle-jewel-art.png 8
+          capture_qa bell       02-bell-jewel-rings.png
+          capture_qa bar        03-bar-vault-locks.png
+          capture_qa seven      04-ruby-seven-energy.png
+          capture_qa diamond    05-sapphire-prism.png
+          capture_qa wild       06-royal-wild-crown.png
+          capture_qa feature    07-jewel-feature-intro.png
+          capture_qa retrigger  08-jewel-wild-retrigger.png
+          capture_qa summary    09-jewel-feature-summary.png
 
           adb shell pm clear cl.exequiel.royalspin || true
-          capture_main 10-free-spins-hud.png 21 --es demo feature
+          capture_main 10-free-spins-jewel-hud.png 21 --es demo feature
+
+          adb shell pm clear cl.exequiel.royalspin || true
+          record_main /sdcard/royal-jewel-idle.mp4 recordings/royal-jewel-idle.mp4
+          adb shell pm clear cl.exequiel.royalspin || true
+          record_main /sdcard/royal-jewel-feature.mp4 recordings/royal-jewel-feature.mp4 --es demo feature
 
           adb logcat -d > screenshots/logcat.txt || true
           if grep -q "FATAL EXCEPTION" screenshots/logcat.txt; then
-            grep -A 50 "FATAL EXCEPTION" screenshots/logcat.txt > screenshots/runtime-summary.txt
+            grep -A 60 "FATAL EXCEPTION" screenshots/logcat.txt > screenshots/runtime-summary.txt
             exit 1
           fi
 
-      - name: Validate images
+      - name: Validate images and videos
         if: always()
         shell: bash
         run: |
-          if [ ! -f screenshots/boot-ready ]; then
-            echo "No image validation: AVD did not boot"
-            exit 1
-          fi
+          test -f screenshots/boot-ready
           python - <<'PY'
           import pathlib, struct
           images = sorted(pathlib.Path('screenshots').glob('*.png'))
@@ -187,22 +198,29 @@ jobs:
               assert data.startswith(b'\x89PNG\r\n\x1a\n'), image
               width, height = struct.unpack('>II', data[16:24])
               assert width > 300 and height > 600, (image, width, height)
-              assert len(data) > 5000, f'Suspiciously small screenshot: {image} {len(data)} bytes'
+              assert len(data) >= 50000, f'Blank/suspicious screenshot: {image} {len(data)} bytes'
               print(image.name, width, height, len(data))
+          videos = sorted(pathlib.Path('recordings').glob('*.mp4'))
+          assert len(videos) == 2, videos
+          for video in videos:
+              assert video.stat().st_size > 100000, (video, video.stat().st_size)
+              print(video.name, video.stat().st_size)
           PY
 
-      - name: Upload screenshots and runtime log
+      - name: Upload screenshots, videos and runtime log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: RoyalSpin-v2.0-cinematics
-          path: screenshots/**
+          name: RoyalSpin-v4.0-jewel-art-media
+          path: |
+            screenshots/**
+            recordings/**
           if-no-files-found: error
 
       - name: Upload APK
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: RoyalSpin-v2.0-emulator-apk
+          name: RoyalSpin-v4.0-jewel-art-emulator-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error

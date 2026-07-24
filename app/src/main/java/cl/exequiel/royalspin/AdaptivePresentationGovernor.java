@@ -8,8 +8,8 @@ import android.view.View;
 import java.lang.reflect.Field;
 
 /**
- * Applies hysteresis to presentation-only overlays and a temporary runtime reduced-motion mode.
- * The user's persisted accessibility preference is preserved exactly as selected.
+ * Applies hysteresis to optional typography effects and a temporary runtime reduced-motion mode.
+ * The Jewel Art renderer remains visible in every quality tier and only lowers its internal budget.
  */
 public final class AdaptivePresentationGovernor implements Choreographer.FrameCallback {
     private static final long SAMPLE_INTERVAL_NANOS = 250_000_000L;
@@ -19,7 +19,7 @@ public final class AdaptivePresentationGovernor implements Choreographer.FrameCa
 
     private final RoyalSpinV2View gameView;
     private final View typographyOverlay;
-    private final View symbolOverlay;
+    private final JewelArtFinalOverlay jewelArtOverlay;
     private final Field qualityField;
     private final Field phaseField;
     private final Field reducedField;
@@ -39,10 +39,10 @@ public final class AdaptivePresentationGovernor implements Choreographer.FrameCa
 
     public AdaptivePresentationGovernor(RoyalSpinV2View gameView,
                                         View typographyOverlay,
-                                        View symbolOverlay) {
+                                        JewelArtFinalOverlay jewelArtOverlay) {
         this.gameView = gameView;
         this.typographyOverlay = typographyOverlay;
-        this.symbolOverlay = symbolOverlay;
+        this.jewelArtOverlay = jewelArtOverlay;
         qualityField = field("qualityTier");
         phaseField = field("phase");
         reducedField = field("reducedMotion");
@@ -113,7 +113,6 @@ public final class AdaptivePresentationGovernor implements Choreographer.FrameCa
             userReducedMotion = currentReduced;
             lastPhase = phase;
         } else if (!automaticReducedMotion && safePhase && currentReduced != userReducedMotion) {
-            // A real user toggle is only accepted outside automatic protection.
             userReducedMotion = currentReduced;
         }
 
@@ -142,8 +141,6 @@ public final class AdaptivePresentationGovernor implements Choreographer.FrameCa
             } else if (!safePhase) healthySince = 0L;
         }
 
-        // The game persists state at phase boundaries; overwrite only the preference key with the
-        // user's genuine choice so automatic Lite mode never becomes a saved accessibility setting.
         if (automaticReducedMotion && !phase.equals(lastPhase)) preserveUserPreference();
         lastPhase = phase;
     }
@@ -179,7 +176,7 @@ public final class AdaptivePresentationGovernor implements Choreographer.FrameCa
         decorationSuspended = !visible;
         int state = visible ? View.VISIBLE : View.INVISIBLE;
         if (typographyOverlay.getVisibility() != state) typographyOverlay.setVisibility(state);
-        if (symbolOverlay.getVisibility() != state) symbolOverlay.setVisibility(state);
+        jewelArtOverlay.setPerformanceSuppressed(!visible);
     }
 
     private Object readObject(Field field) {

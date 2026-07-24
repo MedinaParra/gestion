@@ -10,8 +10,8 @@ android {
         applicationId 'cl.exequiel.royalspin'
         minSdk 24
         targetSdk 35
-        versionCode 30
-        versionName '3.0.0-audiovisual-roadmap-complete'
+        versionCode 40
+        versionName '4.0.0-jewel-art-animation-system'
     }
 
     buildTypes {
