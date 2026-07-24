@@ -14,7 +14,6 @@ public class StakeSlotEngineTest {
         StakeSlotEngine engine = new StakeSlotEngine();
         StakeSlotEngine.SpinResult first = engine.spin(new Random(77L), 2);
         StakeSlotEngine.SpinResult second = engine.spin(new Random(77L), 2);
-
         assertEquals(first.totalBet, second.totalBet);
         assertEquals(first.totalPayout, second.totalPayout);
         for (int reel = 0; reel < StakeSlotEngine.REEL_COUNT; reel++) {
@@ -25,29 +24,29 @@ public class StakeSlotEngineTest {
     @Test
     public void wildSubstitutesFromLeft() {
         int payout = StakeSlotEngine.evaluateLineMultiplierForTest(
-                new String[]{"W", "W", "7", "Q", "J"}
-        );
-        assertEquals(67, payout);
+                new String[]{"W", "W", "7", "Q", "J"});
+        assertEquals(65, payout);
     }
 
     @Test
     public void allWildsUseFiveWildPayout() {
         int payout = StakeSlotEngine.evaluateLineMultiplierForTest(
-                new String[]{"W", "W", "W", "W", "W"}
-        );
-        assertEquals(2050, payout);
+                new String[]{"W", "W", "W", "W", "W"});
+        assertEquals(1993, payout);
     }
 
     @Test
     public void betIsAlwaysTwentyLines() {
-        StakeSlotEngine engine = new StakeSlotEngine();
-        StakeSlotEngine.SpinResult spin = engine.spin(new Random(1L), 3);
+        StakeSlotEngine.SpinResult spin = new StakeSlotEngine().spin(new Random(1L), 3);
         assertEquals(60, spin.totalBet);
         assertTrue(spin.totalPayout >= 0);
     }
 
     @Test
-    public void theoreticalRtpIsVersionedAndTraceable() {
-        assertEquals(0.954796451, StakeSlotEngine.THEORETICAL_RTP, 0.000000001);
+    public void completeRtpTargetIsVersionedAndTraceable() {
+        assertEquals(0.9548, StakeSlotEngine.THEORETICAL_RTP, 0.000000001);
+        assertEquals(StakeSlotEngine.THEORETICAL_RTP,
+                StakeSlotEngine.BASE_GAME_RTP_TARGET + StakeSlotEngine.FEATURE_RTP_TARGET,
+                0.000000001);
     }
 }
