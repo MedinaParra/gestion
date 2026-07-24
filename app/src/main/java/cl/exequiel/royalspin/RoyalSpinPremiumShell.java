@@ -10,6 +10,7 @@ public final class RoyalSpinPremiumShell extends FrameLayout {
     private final RoyalSpinV2View gameView;
     private final PremiumTypographyOverlay typographyOverlay;
     private final JewelArtFinalOverlay jewelArtOverlay;
+    private final JewelBarCorrectionOverlay barCorrectionOverlay;
     private final PremiumFeatureRevealOverlay featureRevealOverlay;
     private final PremiumVersionOverlay versionOverlay;
     private final PremiumReleaseFooterOverlay releaseFooterOverlay;
@@ -23,6 +24,7 @@ public final class RoyalSpinPremiumShell extends FrameLayout {
         gameView = new RoyalSpinV2View(context, demoMode);
         typographyOverlay = new PremiumTypographyOverlay(context, gameView);
         jewelArtOverlay = new JewelArtFinalOverlay(context, gameView);
+        barCorrectionOverlay = new JewelBarCorrectionOverlay(context, gameView);
         featureRevealOverlay = new PremiumFeatureRevealOverlay(context, gameView);
         versionOverlay = new PremiumVersionOverlay(context);
         releaseFooterOverlay = new PremiumReleaseFooterOverlay(context);
@@ -32,14 +34,15 @@ public final class RoyalSpinPremiumShell extends FrameLayout {
 
         typographyOverlay.setLayerType(View.LAYER_TYPE_NONE, null);
         jewelArtOverlay.setLayerType(View.LAYER_TYPE_NONE, null);
+        barCorrectionOverlay.setLayerType(View.LAYER_TYPE_NONE, null);
         featureRevealOverlay.setLayerType(View.LAYER_TYPE_NONE, null);
         versionOverlay.setLayerType(View.LAYER_TYPE_NONE, null);
         releaseFooterOverlay.setLayerType(View.LAYER_TYPE_NONE, null);
 
         addView(gameView, matchParent());
         addView(typographyOverlay, matchParent());
-        // Fully opaque over the former logo and reel glyphs.
         addView(jewelArtOverlay, matchParent());
+        addView(barCorrectionOverlay, matchParent());
         addView(featureRevealOverlay, matchParent());
         addView(versionOverlay, matchParent());
         addView(releaseFooterOverlay, matchParent());
@@ -77,6 +80,7 @@ public final class RoyalSpinPremiumShell extends FrameLayout {
         presentationGovernor.release();
         audioConductor.release();
         featureRevealOverlay.release();
+        barCorrectionOverlay.release();
         jewelArtOverlay.release();
         typographyOverlay.release();
         gameView.release();
