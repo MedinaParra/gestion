@@ -17,7 +17,7 @@ import java.lang.reflect.Field;
 import java.text.NumberFormat;
 import java.util.Locale;
 
-/** Repairs presentation hierarchy during a Free Spins win reveal. */
+/** Final hierarchy and compact-label pass above the living typography layer. */
 public final class PremiumFeatureRevealOverlay extends View implements Choreographer.FrameCallback {
     private static final float W = 360f;
     private static final float H = 800f;
@@ -28,6 +28,7 @@ public final class PremiumFeatureRevealOverlay extends View implements Choreogra
     private final Field phaseField;
     private final Field shownWinField;
     private final Field featureField;
+    private final Field buttonPressedField;
     private boolean frameLoop;
 
     public PremiumFeatureRevealOverlay(Context context, RoyalSpinV2View gameView) {
@@ -39,6 +40,7 @@ public final class PremiumFeatureRevealOverlay extends View implements Choreogra
         phaseField = field("phase");
         shownWinField = field("shownWin");
         featureField = field("featureController");
+        buttonPressedField = field("buttonPressed");
     }
 
     private static Field field(String name) {
@@ -76,8 +78,6 @@ public final class PremiumFeatureRevealOverlay extends View implements Choreogra
 
     @Override protected void onDraw(Canvas canvas) {
         Snapshot snapshot = snapshot();
-        if (!"FEATURE_REVEALING".equals(snapshot.phase) || !snapshot.featureActive) return;
-
         float scale = Math.min(getWidth() / W, getHeight() / H);
         float offsetX = (getWidth() - W * scale) * .5f;
         float offsetY = (getHeight() - H * scale) * .5f;
@@ -87,7 +87,58 @@ public final class PremiumFeatureRevealOverlay extends View implements Choreogra
         canvas.translate(offsetX, offsetY);
         canvas.scale(scale, scale);
 
-        // Restore a clean, legible bonus HUD over the generic event title.
+        if (snapshot.featureActive) drawCompactFeatureHeading(canvas, now);
+        drawCompactActionButton(canvas, snapshot, now);
+        if ("FEATURE_REVEALING".equals(snapshot.phase) && snapshot.featureActive) {
+            drawFeatureRevealHierarchy(canvas, snapshot, now);
+        }
+        canvas.restore();
+    }
+
+    private void drawCompactFeatureHeading(Canvas canvas, long now) {
+        p.setShader(new LinearGradient(78, 526, 282, 555,
+                new int[]{0xF7070910, 0xFB101621, 0xF7070910}, null, Shader.TileMode.CLAMP));
+        canvas.drawRoundRect(new RectF(78, 526, 282, 555), 11, 11, p);
+        p.setShader(null);
+        drawCompactShimmerText(canvas, "ROYAL FREE SPINS", 180, 547, 14f, now,
+                0xFFFFD76A, 0xFFFFF3B3);
+    }
+
+    private void drawCompactActionButton(Canvas canvas, Snapshot snapshot, long now) {
+        boolean ready = "IDLE".equals(snapshot.phase) || "FEATURE_READY".equals(snapshot.phase);
+        String label = "IDLE".equals(snapshot.phase) ? "GIRAR"
+                : "FEATURE_READY".equals(snapshot.phase) ? "GIRO GRATIS" : "OMITIR ANIMACIÓN";
+        float press = snapshot.buttonPressed ? .955f : 1f;
+        float breathe = ready ? LivingTypographyMath.breathe(now, 2300L, .014f) : 1f;
+        canvas.save();
+        canvas.scale(press * breathe, press * breathe, 180, 742);
+
+        float glow = ready ? LivingTypographyMath.glow(now, 2500L, 12f, 22f) : 13f;
+        p.setShadowLayer(glow, 0, 6, ready ? 0xDDF6C453 : 0xBB7D55C8);
+        p.setShader(new LinearGradient(34, 713, 326, 768,
+                ready ? new int[]{0xFFFFE998, 0xFFF2A82C, 0xFFFFD970, 0xFFC67C18}
+                        : new int[]{0xFF9A7AE4, 0xFF5B3590, 0xFF835CCB},
+                null, Shader.TileMode.MIRROR));
+        canvas.drawRoundRect(new RectF(34, 713, 326, 768), 29, 29, p);
+        p.clearShadowLayer();
+        p.setShader(null);
+
+        float sweep = LivingTypographyMath.shimmer(now, 3400L);
+        float sweepX = 8f + sweep * 400f;
+        p.setShader(new LinearGradient(sweepX - 45, 713, sweepX + 45, 768,
+                new int[]{0x00FFFFFF, 0x66FFFFFF, 0x00FFFFFF}, null, Shader.TileMode.CLAMP));
+        canvas.drawRoundRect(new RectF(35, 714, 325, 767), 28, 28, p);
+        p.setShader(null);
+
+        float size = label.length() > 13 ? 13.2f : label.length() > 8 ? 15f : 18f;
+        int dark = ready ? 0xFF1A1003 : Color.WHITE;
+        drawCompactShimmerText(canvas, label, 180, 750, size, now, dark,
+                ready ? 0xFF5A3505 : 0xFFFFFFFF);
+        canvas.restore();
+    }
+
+    private void drawFeatureRevealHierarchy(Canvas canvas, Snapshot snapshot, long now) {
+        // Clean bonus HUD covers the generic reveal label produced by the lower layer.
         p.setShader(new LinearGradient(22, 165, 338, 199,
                 new int[]{0xFA07131F, 0xFA12304A, 0xFA07131F}, null, Shader.TileMode.CLAMP));
         p.setShadowLayer(10, 0, 3, 0xAA42CFFF);
@@ -107,7 +158,6 @@ public final class PremiumFeatureRevealOverlay extends View implements Choreogra
         text(canvas, numbers.format(snapshot.totalFeatureWin) + " CR", 326, 190, 15,
                 Color.WHITE, Paint.Align.RIGHT);
 
-        // Dedicated premium win ribbon below the reel cabinet.
         float pulse = LivingTypographyMath.glow(now, 2100L, .76f, 1f);
         p.setShader(new RadialGradient(180, 488, 158,
                 new int[]{0x4427E7FF, 0x22FFD76A, 0x00000000}, null, Shader.TileMode.CLAMP));
@@ -124,7 +174,34 @@ public final class PremiumFeatureRevealOverlay extends View implements Choreogra
         drawLivingLabel(canvas, "PREMIO", 180, 486, 14, now);
         text(canvas, numbers.format(snapshot.shownWin) + " CR", 180, 502, 10,
                 0xFFFFEAB0, Paint.Align.CENTER);
+    }
+
+    private void drawCompactShimmerText(Canvas canvas, String value, float x, float y,
+                                        float size, long now, int baseColor, int highlightColor) {
+        float pulse = LivingTypographyMath.breathe(now, 3000L, .012f);
+        canvas.save();
+        canvas.scale(pulse, pulse, x, y - size * .35f);
+        float width = Math.max(30f, measure(value, size));
+        float q = LivingTypographyMath.shimmer(now, 3900L);
+        float sweepX = x - width * .85f + q * width * 1.7f;
+        p.setTypeface(Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD));
+        p.setTextSize(size);
+        p.setTextAlign(Paint.Align.CENTER);
+        p.setShader(new LinearGradient(sweepX - width * .20f, y - size,
+                sweepX + width * .20f, y + 2,
+                new int[]{baseColor, highlightColor, baseColor},
+                null, Shader.TileMode.CLAMP));
+        p.setShadowLayer(7, 0, 2, (baseColor & 0x00FFFFFF) | 0x88000000);
+        canvas.drawText(value, x, y, p);
+        p.clearShadowLayer();
+        p.setShader(null);
         canvas.restore();
+    }
+
+    private float measure(String value, float size) {
+        p.setTypeface(Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD));
+        p.setTextSize(size);
+        return p.measureText(value);
     }
 
     private void drawLivingLabel(Canvas canvas, String value, float centerX, float baseline,
@@ -170,6 +247,7 @@ public final class PremiumFeatureRevealOverlay extends View implements Choreogra
         try {
             snapshot.phase = String.valueOf(phaseField.get(gameView));
             snapshot.shownWin = shownWinField.getInt(gameView);
+            snapshot.buttonPressed = buttonPressedField.getBoolean(gameView);
             FeatureSessionController feature = (FeatureSessionController) featureField.get(gameView);
             if (feature != null) {
                 snapshot.featureActive = feature.isActive();
@@ -186,6 +264,7 @@ public final class PremiumFeatureRevealOverlay extends View implements Choreogra
         String phase = "IDLE";
         int shownWin;
         boolean featureActive;
+        boolean buttonPressed;
         int spinsRemaining;
         int totalFeatureWin;
     }
