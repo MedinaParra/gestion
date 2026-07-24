@@ -75,10 +75,17 @@ jobs:
             echo "EMULATOR_PID=$emulator_pid"
 
             adb start-server
-            adb wait-for-device
+            if ! timeout 180 adb wait-for-device; then
+              echo "ADB_DEVICE_TIMEOUT"
+              adb devices -l || true
+              tail -n 300 screenshots/emulator.log || true
+              kill "$emulator_pid" 2>/dev/null || true
+              exit 1
+            fi
+            adb devices -l || true
             booted=""
             for attempt in $(seq 1 240); do
-              booted=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)
+              booted=$(timeout 10 adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)
               echo "BOOT_ATTEMPT=$attempt VALUE=$booted"
               if [ "$booted" = "1" ]; then break; fi
               if ! kill -0 "$emulator_pid" 2>/dev/null; then
@@ -89,7 +96,9 @@ jobs:
             done
             if [ "$booted" != "1" ]; then
               echo "AVD did not complete boot"
+              adb devices -l || true
               tail -n 300 screenshots/emulator.log || true
+              kill "$emulator_pid" 2>/dev/null || true
               exit 1
             fi
             touch screenshots/boot-ready
