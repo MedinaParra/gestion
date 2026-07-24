@@ -33,6 +33,7 @@ public class MainActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         applyImmersiveMode();
+        if (gameShell != null) gameShell.onHostResume();
     }
 
     @Override protected void onPause() {
