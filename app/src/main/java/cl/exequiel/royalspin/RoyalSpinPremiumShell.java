@@ -5,11 +5,11 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 
-/** Hosts the validated game renderer and all presentation-only roadmap layers. */
+/** Hosts the validated game renderer and all presentation-only layers. */
 public final class RoyalSpinPremiumShell extends FrameLayout {
     private final RoyalSpinV2View gameView;
     private final PremiumTypographyOverlay typographyOverlay;
-    private final JewelArtOverlay jewelArtOverlay;
+    private final JewelArtFinalOverlay jewelArtOverlay;
     private final PremiumFeatureRevealOverlay featureRevealOverlay;
     private final PremiumVersionOverlay versionOverlay;
     private final PremiumReleaseFooterOverlay releaseFooterOverlay;
@@ -22,7 +22,7 @@ public final class RoyalSpinPremiumShell extends FrameLayout {
         setClipToPadding(false);
         gameView = new RoyalSpinV2View(context, demoMode);
         typographyOverlay = new PremiumTypographyOverlay(context, gameView);
-        jewelArtOverlay = new JewelArtOverlay(context, gameView);
+        jewelArtOverlay = new JewelArtFinalOverlay(context, gameView);
         featureRevealOverlay = new PremiumFeatureRevealOverlay(context, gameView);
         versionOverlay = new PremiumVersionOverlay(context);
         releaseFooterOverlay = new PremiumReleaseFooterOverlay(context);
@@ -30,7 +30,6 @@ public final class RoyalSpinPremiumShell extends FrameLayout {
         presentationGovernor = new AdaptivePresentationGovernor(
                 gameView, typographyOverlay, jewelArtOverlay);
 
-        // Keep every layer on the activity's normal hardware-accelerated canvas.
         typographyOverlay.setLayerType(View.LAYER_TYPE_NONE, null);
         jewelArtOverlay.setLayerType(View.LAYER_TYPE_NONE, null);
         featureRevealOverlay.setLayerType(View.LAYER_TYPE_NONE, null);
@@ -39,7 +38,7 @@ public final class RoyalSpinPremiumShell extends FrameLayout {
 
         addView(gameView, matchParent());
         addView(typographyOverlay, matchParent());
-        // Jewel Art masks and replaces the former title and reel glyphs.
+        // Fully opaque over the former logo and reel glyphs.
         addView(jewelArtOverlay, matchParent());
         addView(featureRevealOverlay, matchParent());
         addView(versionOverlay, matchParent());
