@@ -59,13 +59,17 @@ public final class PremiumAudioConductor implements Choreographer.FrameCallback 
 
     public void suspend() {
         suspended = true;
+        if (running) {
+            running = false;
+            Choreographer.getInstance().removeFrameCallback(this);
+        }
         audio.suspend();
     }
 
     public void resume() {
-        if (!running) start();
         suspended = false;
         audio.resume();
+        if (!running) start();
     }
 
     public void release() {
@@ -82,7 +86,7 @@ public final class PremiumAudioConductor implements Choreographer.FrameCallback 
             lastProcessedNanos = frameTimeNanos;
             update(frameTimeNanos / 1_000_000L);
         }
-        Choreographer.getInstance().postFrameCallback(this);
+        if (running) Choreographer.getInstance().postFrameCallback(this);
     }
 
     private void update(long nowMs) {
