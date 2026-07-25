@@ -7,26 +7,24 @@ import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
-import android.widget.FrameLayout;
 
 public final class LandscapeMainActivity extends Activity {
     private LandscapeSlotView gameView;
-    private LandscapeHeaderOverlay headerOverlay;
+    private LandscapeSpectacleOverlay spectacle;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         applyImmersive();
+
         String demo = getIntent() == null ? null : getIntent().getStringExtra("demo");
         gameView = new LandscapeSlotView(this, demo);
-        headerOverlay = new LandscapeHeaderOverlay(this);
-        FrameLayout root = new FrameLayout(this);
-        root.addView(gameView, new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
-        root.addView(headerOverlay, new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
-        setContentView(root);
+        spectacle = new LandscapeSpectacleOverlay(this);
+
+        // LandscapeRootLayout dispatches every pointer event directly to gameView,
+        // so cinematic overlays can never block the GIRAR control.
+        setContentView(new LandscapeRootLayout(this, gameView, spectacle));
     }
 
     @Override public void onWindowFocusChanged(boolean hasFocus) {
@@ -46,7 +44,7 @@ public final class LandscapeMainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
-        if (headerOverlay != null) headerOverlay.release();
+        if (spectacle != null) spectacle.release();
         if (gameView != null) gameView.release();
         super.onDestroy();
     }
@@ -56,7 +54,8 @@ public final class LandscapeMainActivity extends Activity {
             WindowInsetsController controller = getWindow().getInsetsController();
             if (controller != null) {
                 controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
-                controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                controller.setSystemBarsBehavior(
+                        WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
             }
         } else {
             getWindow().getDecorView().setSystemUiVisibility(
