@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!-- onRenderProcessGone is dispatched by Android only on API 26+, so didCrash() is safe there. -->
+    <issue id="NewApi">
+        <ignore path="src/main/java/cl/exequiel/royalspin/landscape/LandscapeMainActivity.java" />
+    </issue>
+</lint>
