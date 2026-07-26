@@ -13,7 +13,9 @@ adb shell settings put system accelerometer_rotation 0 || true
 adb shell settings put system user_rotation 1 || true
 adb shell wm size 1280x720 || true
 adb shell wm density 240 || true
-adb install -r "$APK"
+# Mandatory clean install: remove every prior package/data instance before installing this APK.
+adb uninstall "$PACKAGE" >/dev/null 2>&1 || true
+adb install "$APK"
 adb shell pm path "$PACKAGE" | tee "$EVIDENCE/package-path.txt"
 adb logcat -c
 
