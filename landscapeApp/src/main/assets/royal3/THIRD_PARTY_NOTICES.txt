@@ -1,0 +1,13 @@
+Royal Spin 3.0 includes the following third-party open-source runtimes during the Android build:
+
+PixiJS 8.19.0
+Copyright (c) 2013-2026 Mat Groves, Chad Engler and contributors
+License: MIT
+Source: https://github.com/pixijs/pixijs
+
+PixiJS Filters 6.1.5
+Copyright (c) PixiJS community contributors
+License: MIT
+Source: https://github.com/pixijs/filters
+
+The runtime files are pinned to exact versions and packaged locally in the APK. Royal Spin does not load them from the network while the application is running.

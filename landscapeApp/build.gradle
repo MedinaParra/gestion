@@ -10,8 +10,8 @@ android {
         applicationId 'cl.exequiel.royalspin.landscape'
         minSdk 24
         targetSdk 35
-        versionCode 4
-        versionName '2.2.0-landscape-ui-thread-safe'
+        versionCode 6
+        versionName '3.0.0-webgl-cinematic'
     }
 
     buildTypes {
@@ -19,6 +19,10 @@ android {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
+    }
+
+    sourceSets {
+        main.assets.srcDir layout.buildDirectory.dir('generated/royal3Assets')
     }
 
     compileOptions {
@@ -31,6 +35,46 @@ android {
     }
 }
 
+def royalAssets = layout.buildDirectory.dir('generated/royal3Assets/royal3')
+
+def downloadPinned = { String url, File output, long minimumBytes ->
+    output.parentFile.mkdirs()
+    if (output.exists() && output.length() >= minimumBytes) return
+    File temporary = new File(output.parentFile, output.name + '.part')
+    temporary.delete()
+    new URI(url).toURL().withInputStream { input ->
+        temporary.withOutputStream { stream -> stream << input }
+    }
+    if (temporary.length() < minimumBytes) {
+        temporary.delete()
+        throw new GradleException("Downloaded runtime is unexpectedly small: ${url}")
+    }
+    if (!temporary.renameTo(output)) {
+        output.bytes = temporary.bytes
+        temporary.delete()
+    }
+}
+
+tasks.register('prepareRoyal3Runtime') {
+    outputs.files(
+            royalAssets.map { new File(it.asFile, 'pixi.min.js') },
+            royalAssets.map { new File(it.asFile, 'pixi-filters.min.js') })
+    doLast {
+        File dir = royalAssets.get().asFile
+        downloadPinned(
+                'https://cdn.jsdelivr.net/npm/pixi.js@8.19.0/dist/pixi.min.js',
+                new File(dir, 'pixi.min.js'), 400_000L)
+        downloadPinned(
+                'https://cdn.jsdelivr.net/npm/pixi-filters@6.1.5/dist/pixi-filters.js',
+                new File(dir, 'pixi-filters.min.js'), 180_000L)
+    }
+}
+
+tasks.named('preBuild').configure {
+    dependsOn tasks.named('prepareRoyal3Runtime')
+}
+
 dependencies {
+    implementation 'androidx.webkit:webkit:1.16.0'
     testImplementation 'junit:junit:4.13.2'
 }
