@@ -65,8 +65,8 @@ tasks.register('prepareRoyal3Runtime') {
                 'https://cdn.jsdelivr.net/npm/pixi.js@8.19.0/dist/pixi.min.js',
                 new File(dir, 'pixi.min.js'), 400_000L)
         downloadPinned(
-                'https://cdn.jsdelivr.net/npm/pixi-filters@6.1.5/dist/browser/pixi-filters.min.js',
-                new File(dir, 'pixi-filters.min.js'), 100_000L)
+                'https://cdn.jsdelivr.net/npm/pixi-filters@6.1.5/dist/pixi-filters.js',
+                new File(dir, 'pixi-filters.min.js'), 180_000L)
     }
 }
 
