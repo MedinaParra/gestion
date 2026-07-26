@@ -3,7 +3,7 @@
     <application
         android:allowBackup="false"
         android:fullBackupContent="false"
-        android:hardwareAccelerated="true"
+        android:hardwareAccelerated="false"
         android:label="Royal Spin Landscape"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.NoActionBar"
