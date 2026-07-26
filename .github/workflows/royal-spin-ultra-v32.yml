@@ -153,11 +153,12 @@ jobs:
           script: bash scripts/royal-spin-smoke.sh artifacts/RoyalSpin-3.2-Ultra-debug.apk modern evidence-api35
 
       - name: Upload API 35 evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: RoyalSpin-3.2-Ultra-API35-Evidence
           path: evidence-api35/**
-          if-no-files-found: error
+          if-no-files-found: warn
 
   fallback-api24:
     name: Android 7 API 24 fallback smoke
@@ -192,8 +193,9 @@ jobs:
           script: bash scripts/royal-spin-smoke.sh artifacts/RoyalSpin-3.2-Ultra-debug.apk legacy evidence-api24
 
       - name: Upload API 24 evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: RoyalSpin-3.2-Ultra-API24-Fallback-Evidence
           path: evidence-api24/**
-          if-no-files-found: error
+          if-no-files-found: warn
