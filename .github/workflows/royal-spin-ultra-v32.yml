@@ -1,0 +1,196 @@
+name: Validate Royal Spin 3.2 Ultra
+
+on:
+  pull_request:
+    branches:
+      - agent/royal-spin-spectacle-v31
+    paths:
+      - 'landscapeApp/**'
+      - 'scripts/royal-spin-smoke.sh'
+      - '.github/workflows/royal-spin-ultra-v32.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: royal-spin-ultra-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build, lint and verify APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configure Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android packages
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
+
+      - name: Configure Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Unit tests, lint and assemble
+        run: gradle --no-daemon --stacktrace :landscapeApp:testDebugUnitTest :landscapeApp:lintDebug :landscapeApp:assembleDebug
+
+      - name: Verify exact application and packaged runtimes
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=landscapeApp/build/outputs/apk/debug/landscapeApp-debug.apk
+          test -f "$apk"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | tee apk-badging.txt
+          grep -F "package: name='cl.exequiel.royalspin.landscape'" apk-badging.txt
+          grep -F "launchable-activity: name='cl.exequiel.royalspin.landscape.LandscapeMainActivity'" apk-badging.txt
+          grep -F "application-label:'Royal Spin'" apk-badging.txt
+          unzip -l "$apk" | tee apk-files.txt
+          for asset in \
+            assets/royal3/index.html \
+            assets/royal3/pixi.min.js \
+            assets/royal3/pixi-filters.min.js \
+            assets/royal3/royal3.compat.js \
+            assets/royal3/royal31-prelude.js \
+            assets/royal3/royal31-spectacle.js \
+            assets/royal3/royal32-ultra.js \
+            assets/royal3/royal32-ultra-part1.js \
+            assets/royal3/royal32-ultra-part2.js \
+            assets/royal3/royal32-ultra-part3.js \
+            assets/royal3/royal32-ultra-part4.js \
+            assets/royal3/royal32-ultra-part5.js \
+            assets/royal3/royal32-ultra-part6.js \
+            assets/royal3/royal32-ultra-part7.js \
+            assets/royal3/symbols/wild.svg \
+            assets/royal3/symbols/diamond.svg \
+            assets/royal3/symbols/bell.svg \
+            assets/royal3/symbols/seven.svg \
+            assets/royal3/symbols/bar.svg; do
+            grep -F "$asset" apk-files.txt
+          done
+          rm -rf extracted-ultra
+          mkdir extracted-ultra
+          unzip -q "$apk" 'assets/royal3/royal32-ultra-part*.js' -d extracted-ultra
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64, hashlib, re
+          root = Path('extracted-ultra/assets/royal3')
+          chunks = []
+          for index in range(1, 8):
+              text = (root / f'royal32-ultra-part{index}.js').read_text(encoding='utf-8')
+              match = re.search(r"push\('([^']*)'\)", text)
+              assert match, index
+              chunks.append(match.group(1))
+          source = base64.b64decode(''.join(chunks))
+          digest = hashlib.sha256(source).hexdigest()
+          assert digest == '9a8cb77618439d221f52b3929ef56454a862ad3941644c3cf923d9e8edb7d284', digest
+          decoded = source.decode('utf-8')
+          assert 'pointer-events:none' in decoded
+          assert 'function UltraAudio()' in decoded
+          assert "maxParticles: 220" in decoded
+          print('ultra renderer payload verified:', digest)
+          PY
+          cp "$apk" RoyalSpin-3.2-Ultra-debug.apk
+          sha256sum RoyalSpin-3.2-Ultra-debug.apk | tee RoyalSpin-3.2-Ultra-debug.apk.sha256
+          stat -c 'size_bytes=%s' RoyalSpin-3.2-Ultra-debug.apk | tee RoyalSpin-3.2-Ultra-debug.apk.size
+
+      - name: Upload verified APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: RoyalSpin-3.2-Ultra-APK
+          path: |
+            RoyalSpin-3.2-Ultra-debug.apk
+            RoyalSpin-3.2-Ultra-debug.apk.sha256
+            RoyalSpin-3.2-Ultra-debug.apk.size
+            apk-badging.txt
+            apk-files.txt
+          if-no-files-found: error
+
+  smoke-api35:
+    name: Android 15 API 35 cold start, spin and media
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download verified APK
+        uses: actions/download-artifact@v4
+        with:
+          name: RoyalSpin-3.2-Ultra-APK
+          path: artifacts
+
+      - name: Configure Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Run API 35 smoke and capture
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: bash scripts/royal-spin-smoke.sh artifacts/RoyalSpin-3.2-Ultra-debug.apk modern evidence-api35
+
+      - name: Upload API 35 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: RoyalSpin-3.2-Ultra-API35-Evidence
+          path: evidence-api35/**
+          if-no-files-found: error
+
+  fallback-api24:
+    name: Android 7 API 24 fallback smoke
+    needs: build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download verified APK
+        uses: actions/download-artifact@v4
+        with:
+          name: RoyalSpin-3.2-Ultra-APK
+          path: artifacts
+
+      - name: Configure Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Run API 24 fallback smoke
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 24
+          arch: x86_64
+          target: google_apis
+          profile: pixel_2
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: bash scripts/royal-spin-smoke.sh artifacts/RoyalSpin-3.2-Ultra-debug.apk legacy evidence-api24
+
+      - name: Upload API 24 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: RoyalSpin-3.2-Ultra-API24-Fallback-Evidence
+          path: evidence-api24/**
+          if-no-files-found: error
