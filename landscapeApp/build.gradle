@@ -10,8 +10,8 @@ android {
         applicationId 'cl.exequiel.royalspin.landscape'
         minSdk 24
         targetSdk 35
-        versionCode 7
-        versionName '3.1.0-webgl-spectacle'
+        versionCode 8
+        versionName '3.2.0-webgl-ultra'
     }
 
     buildTypes {
