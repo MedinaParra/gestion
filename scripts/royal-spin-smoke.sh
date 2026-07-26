@@ -56,20 +56,20 @@ spin_and_capture() {
   capture "$final_name"
 }
 
-start_scene ""
-capture "initial"
-# Mandatory 15-second cold-start liveness window.
-sleep 10
-alive
-
-adb shell input tap 1147 475
-sleep 0.7
-capture "spin-speed"
-sleep 4.8
-alive
-capture "spin-complete"
-
 if [[ "$MODE" == "modern" ]]; then
+  start_scene ""
+  capture "initial"
+  # Mandatory 15-second cold-start liveness window (5 seconds in start_scene + 10 here).
+  sleep 10
+  alive
+
+  adb shell input tap 1147 475
+  sleep 0.7
+  capture "spin-speed"
+  sleep 4.8
+  alive
+  capture "spin-complete"
+
   spin_and_capture "anticipation" "anticipation"
   spin_and_capture "normal" "normal-win"
   spin_and_capture "big" "big-win"
@@ -102,11 +102,18 @@ else
   adb shell am start -W -n "$ACTIVITY" --ez force_fallback true > "$EVIDENCE/start-fallback.txt"
   sleep 5
   alive
-  capture "fallback-initial"
-  adb shell input tap 1128 470 || true
-  sleep 4
+  capture "initial"
+  cp "$EVIDENCE/initial.png" "$EVIDENCE/fallback-initial.png"
+  # Keep the API 24 fallback process alive for the same 15-second cold-start window.
+  sleep 10
   alive
-  capture "fallback-after-spin"
+  adb shell input tap 1128 470 || true
+  sleep 0.7
+  capture "spin-speed"
+  sleep 4.8
+  alive
+  capture "spin-complete"
+  cp "$EVIDENCE/spin-complete.png" "$EVIDENCE/fallback-after-spin.png"
 fi
 
 adb shell dumpsys activity activities > "$EVIDENCE/dumpsys-activity.txt"
