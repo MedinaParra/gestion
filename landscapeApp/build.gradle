@@ -10,8 +10,8 @@ android {
         applicationId 'cl.exequiel.royalspin.landscape'
         minSdk 24
         targetSdk 35
-        versionCode 4
-        versionName '2.2.0-landscape-ui-thread-safe'
+        versionCode 5
+        versionName '2.3.0-landscape-animation-audio-polish'
     }
 
     buildTypes {

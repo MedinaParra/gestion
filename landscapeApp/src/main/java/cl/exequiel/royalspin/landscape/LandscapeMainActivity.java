@@ -12,29 +12,24 @@ import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
-/**
- * Startup-safe activity. Android View instances are created exclusively on the main thread.
- */
+/** Startup-safe activity. Every Android View is created exclusively on the main thread. */
 public final class LandscapeMainActivity extends Activity {
-    private LandscapeSlotView gameView;
+    private CinematicSlotView gameView;
     private boolean destroyed;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
         try {
             requestWindowFeature(Window.FEATURE_NO_TITLE);
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             getWindow().setBackgroundDrawableResource(android.R.color.black);
         } catch (Throwable ignored) {
-            // Vendor window implementations must never abort startup.
+            // Fullscreen/window cosmetics may not abort startup on vendor Android builds.
         }
 
         final View loading = createLoadingView();
         setContentView(loading);
-
-        // Let Android present at least one simple frame first. The renderer is then constructed
-        // on the UI thread, as required by the Android View contract.
+        // Show one immediate lightweight frame, then build the renderer on the UI thread.
         loading.post(() -> initializeGameOnMainThread(readDemo()));
     }
 
@@ -63,9 +58,9 @@ public final class LandscapeMainActivity extends Activity {
         title.setTypeface(android.graphics.Typeface.SERIF, android.graphics.Typeface.BOLD);
 
         TextView subtitle = new TextView(this);
-        subtitle.setText("INICIANDO MODO HORIZONTAL…");
+        subtitle.setText("CARGANDO EXPERIENCIA CINEMATOGRÁFICA…");
         subtitle.setTextColor(0xFFD8DDEA);
-        subtitle.setTextSize(15f);
+        subtitle.setTextSize(14f);
         subtitle.setGravity(Gravity.CENTER);
         subtitle.setPadding(0, 18, 0, 28);
 
@@ -90,11 +85,9 @@ public final class LandscapeMainActivity extends Activity {
 
     private void initializeGameOnMainThread(String demo) {
         if (destroyed || isFinishing()) return;
-
         try {
-            gameView = new LandscapeSlotView(this, demo);
-            // Avoid an additional vendor-specific RenderNode. Canvas animations still run.
-            gameView.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+            gameView = new CinematicSlotView(this, demo);
+            gameView.setLayerType(View.LAYER_TYPE_NONE, null);
 
             FrameLayout root = new FrameLayout(this);
             root.setBackgroundColor(Color.BLACK);
@@ -116,7 +109,7 @@ public final class LandscapeMainActivity extends Activity {
                     ? "desconocido"
                     : failure.getClass().getSimpleName() + ": " + safeMessage(failure);
             message.setText("ROYAL SPIN · MODO DIAGNÓSTICO\n\n"
-                    + "No se pudo iniciar el renderer.\n"
+                    + "No se pudo iniciar la experiencia.\n"
                     + "Detalle: " + detail);
             message.setTextColor(Color.WHITE);
             message.setTextSize(17f);
@@ -125,7 +118,7 @@ public final class LandscapeMainActivity extends Activity {
             message.setBackgroundColor(0xFF090B12);
             setContentView(message);
         } catch (Throwable ignored) {
-            // At this point there is deliberately no finish() call: keep the process visible.
+            // Deliberately do not call finish(): keep the process visible for diagnosis.
         }
     }
 
@@ -162,8 +155,6 @@ public final class LandscapeMainActivity extends Activity {
     @SuppressWarnings("deprecation")
     private void applyImmersiveCompat() {
         try {
-            // Legacy flags are intentionally used here because they are stable from API 24
-            // through current Android and avoid OEM WindowInsetsController startup defects.
             getWindow().getDecorView().setSystemUiVisibility(
                     View.SYSTEM_UI_FLAG_FULLSCREEN
                             | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
@@ -172,7 +163,7 @@ public final class LandscapeMainActivity extends Activity {
                             | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
                             | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
         } catch (Throwable ignored) {
-            // Fullscreen is cosmetic; failure must not close the game.
+            // Fullscreen is cosmetic and must never close the game.
         }
     }
 }
