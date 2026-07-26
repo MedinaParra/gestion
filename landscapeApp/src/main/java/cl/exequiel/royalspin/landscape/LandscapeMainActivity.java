@@ -6,45 +6,44 @@ import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
 import android.view.Window;
-import android.view.WindowInsets;
-import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-
 /**
- * Cold-start-safe landscape activity.
- *
- * The original build created nine vector bitmaps and two full-screen hardware layers inside
- * onCreate(). That worked in the CI emulator but could stall or abort startup on some physical
- * GPUs. This activity paints a loading frame immediately, prepares the renderer away from the
- * UI thread and attaches only one interactive view with no forced hardware layer.
+ * Startup-safe activity. Android View instances are created exclusively on the main thread.
  */
 public final class LandscapeMainActivity extends Activity {
     private LandscapeSlotView gameView;
-    private ExecutorService loader;
-    private volatile boolean destroyed;
+    private boolean destroyed;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        requestWindowFeature(Window.FEATURE_NO_TITLE);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        getWindow().setBackgroundDrawableResource(android.R.color.black);
-        applyImmersive();
-        setContentView(createLoadingView());
 
-        String demo = getIntent() == null ? null : getIntent().getStringExtra("demo");
-        loader = Executors.newSingleThreadExecutor(runnable -> {
-            Thread thread = new Thread(runnable, "royal-landscape-loader");
-            thread.setPriority(Thread.NORM_PRIORITY - 1);
-            return thread;
-        });
-        loader.execute(() -> prepareRenderer(demo));
+        try {
+            requestWindowFeature(Window.FEATURE_NO_TITLE);
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            getWindow().setBackgroundDrawableResource(android.R.color.black);
+        } catch (Throwable ignored) {
+            // Vendor window implementations must never abort startup.
+        }
+
+        final View loading = createLoadingView();
+        setContentView(loading);
+
+        // Let Android present at least one simple frame first. The renderer is then constructed
+        // on the UI thread, as required by the Android View contract.
+        loading.post(() -> initializeGameOnMainThread(readDemo()));
+    }
+
+    private String readDemo() {
+        try {
+            return getIntent() == null ? null : getIntent().getStringExtra("demo");
+        } catch (Throwable ignored) {
+            return null;
+        }
     }
 
     private View createLoadingView() {
@@ -64,7 +63,7 @@ public final class LandscapeMainActivity extends Activity {
         title.setTypeface(android.graphics.Typeface.SERIF, android.graphics.Typeface.BOLD);
 
         TextView subtitle = new TextView(this);
-        subtitle.setText("Preparando experiencia horizontal…");
+        subtitle.setText("INICIANDO MODO HORIZONTAL…");
         subtitle.setTextColor(0xFFD8DDEA);
         subtitle.setTextSize(15f);
         subtitle.setGravity(Gravity.CENTER);
@@ -89,31 +88,13 @@ public final class LandscapeMainActivity extends Activity {
         return root;
     }
 
-    private void prepareRenderer(String demo) {
-        LandscapeSlotView prepared = null;
-        Throwable failure = null;
+    private void initializeGameOnMainThread(String demo) {
+        if (destroyed || isFinishing()) return;
+
         try {
-            // Bitmap generation is the expensive part. The view is not attached or drawn here.
-            prepared = new LandscapeSlotView(this, demo);
-        } catch (Throwable error) {
-            failure = error;
-        }
-
-        final LandscapeSlotView ready = prepared;
-        final Throwable startupFailure = failure;
-        runOnUiThread(() -> {
-            if (destroyed) {
-                if (ready != null) ready.release();
-                return;
-            }
-            if (startupFailure != null || ready == null) {
-                showStartupError(startupFailure);
-                return;
-            }
-
-            // Do not allocate a second full-screen RenderNode/layer on vendor GPUs.
-            ready.setLayerType(View.LAYER_TYPE_NONE, null);
-            gameView = ready;
+            gameView = new LandscapeSlotView(this, demo);
+            // Avoid an additional vendor-specific RenderNode. Canvas animations still run.
+            gameView.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
 
             FrameLayout root = new FrameLayout(this);
             root.setBackgroundColor(Color.BLACK);
@@ -121,31 +102,47 @@ public final class LandscapeMainActivity extends Activity {
                     FrameLayout.LayoutParams.MATCH_PARENT,
                     FrameLayout.LayoutParams.MATCH_PARENT));
             setContentView(root);
-            applyImmersive();
+            applyImmersiveCompat();
             gameView.onHostResume();
-        });
+        } catch (Throwable failure) {
+            showStartupError(failure);
+        }
     }
 
     private void showStartupError(Throwable failure) {
-        TextView message = new TextView(this);
-        String detail = failure == null ? "desconocido" : failure.getClass().getSimpleName();
-        message.setText("Royal Spin no pudo iniciar el renderer.\nModo seguro activo.\nDetalle: " + detail);
-        message.setTextColor(Color.WHITE);
-        message.setTextSize(18f);
-        message.setGravity(Gravity.CENTER);
-        message.setPadding(48, 48, 48, 48);
-        message.setBackgroundColor(0xFF090B12);
-        setContentView(message);
+        try {
+            TextView message = new TextView(this);
+            String detail = failure == null
+                    ? "desconocido"
+                    : failure.getClass().getSimpleName() + ": " + safeMessage(failure);
+            message.setText("ROYAL SPIN · MODO DIAGNÓSTICO\n\n"
+                    + "No se pudo iniciar el renderer.\n"
+                    + "Detalle: " + detail);
+            message.setTextColor(Color.WHITE);
+            message.setTextSize(17f);
+            message.setGravity(Gravity.CENTER);
+            message.setPadding(48, 48, 48, 48);
+            message.setBackgroundColor(0xFF090B12);
+            setContentView(message);
+        } catch (Throwable ignored) {
+            // At this point there is deliberately no finish() call: keep the process visible.
+        }
+    }
+
+    private static String safeMessage(Throwable failure) {
+        String value = failure.getMessage();
+        if (value == null || value.trim().isEmpty()) return "sin mensaje";
+        return value.length() > 160 ? value.substring(0, 160) : value;
     }
 
     @Override public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
-        if (hasFocus) applyImmersive();
+        if (hasFocus) applyImmersiveCompat();
     }
 
     @Override protected void onResume() {
         super.onResume();
-        applyImmersive();
+        applyImmersiveCompat();
         if (gameView != null) gameView.onHostResume();
     }
 
@@ -156,20 +153,17 @@ public final class LandscapeMainActivity extends Activity {
 
     @Override protected void onDestroy() {
         destroyed = true;
-        if (loader != null) loader.shutdownNow();
-        if (gameView != null) gameView.release();
+        if (gameView != null) {
+            try { gameView.release(); } catch (Throwable ignored) {}
+        }
         super.onDestroy();
     }
 
-    private void applyImmersive() {
-        if (android.os.Build.VERSION.SDK_INT >= 30) {
-            WindowInsetsController controller = getWindow().getInsetsController();
-            if (controller != null) {
-                controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
-                controller.setSystemBarsBehavior(
-                        WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
-            }
-        } else {
+    @SuppressWarnings("deprecation")
+    private void applyImmersiveCompat() {
+        try {
+            // Legacy flags are intentionally used here because they are stable from API 24
+            // through current Android and avoid OEM WindowInsetsController startup defects.
             getWindow().getDecorView().setSystemUiVisibility(
                     View.SYSTEM_UI_FLAG_FULLSCREEN
                             | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
@@ -177,6 +171,8 @@ public final class LandscapeMainActivity extends Activity {
                             | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                             | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
                             | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+        } catch (Throwable ignored) {
+            // Fullscreen is cosmetic; failure must not close the game.
         }
     }
 }
