@@ -4,11 +4,11 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
   <meta name="theme-color" content="#02030a" />
-  <title>Royal Spin 3.1</title>
+  <title>Royal Spin 3.2 Ultra</title>
   <style>
     html,body,#stage{margin:0;width:100%;height:100%;overflow:hidden;background:#02030a;touch-action:none;user-select:none;-webkit-user-select:none}
     canvas{display:block;width:100%;height:100%;touch-action:none}
-    #boot{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(circle at 50% 42%,#321254 0,#090713 45%,#010207 100%);color:#ffe491;font-family:Georgia,serif;z-index:5;transition:opacity .45s ease}
+    #boot{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(circle at 50% 42%,#321254 0,#090713 45%,#010207 100%);color:#ffe491;font-family:Georgia,serif;z-index:9;transition:opacity .45s ease}
     #boot strong{font-size:60px;letter-spacing:.08em;text-shadow:0 0 28px #ffb52c,0 0 70px #9b38ff}
     #boot span{margin-top:18px;font:600 14px Arial,sans-serif;letter-spacing:.24em;color:#d6d9e8}
     #boot.hide{opacity:0;pointer-events:none}
@@ -16,11 +16,12 @@
 </head>
 <body>
   <div id="stage"></div>
-  <div id="boot"><strong>ROYAL SPIN 3.1</strong><span>ACTIVANDO SPECTACLE ENGINE</span></div>
+  <div id="boot"><strong>ROYAL SPIN 3.2</strong><span>ACTIVANDO ULTRA SPECTACLE</span></div>
   <script src="pixi.min.js"></script>
   <script src="pixi-filters.min.js"></script>
   <script src="royal31-prelude.js"></script>
   <script src="royal3.compat.js"></script>
+  <script src="royal32-ultra.js"></script>
   <script src="royal31-spectacle.js"></script>
 </body>
 </html>
