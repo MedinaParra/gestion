@@ -2,6 +2,7 @@ package cl.exequiel.royalspin.landscape;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
@@ -34,10 +35,12 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.util.Locale;
 import java.util.Random;
 
 /**
- * Royal Spin 3.0: local PixiJS/WebGL renderer with a native slot engine and a Canvas fallback.
+ * Royal Spin 3.2: local PixiJS/WebGL renderer with a native slot engine,
+ * adaptive Canvas spectacle layer and stable Canvas fallback.
  */
 public final class LandscapeMainActivity extends Activity {
     private static final String LOCAL_URL =
@@ -50,9 +53,12 @@ public final class LandscapeMainActivity extends Activity {
     private LandscapeSlotView fallbackView;
     private boolean rendererReady;
     private boolean destroyed;
+    private String demoScene = "";
+    private boolean forceFallback;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        updateDemoScene(getIntent());
         try {
             requestWindowFeature(Window.FEATURE_NO_TITLE);
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -66,7 +72,22 @@ public final class LandscapeMainActivity extends Activity {
         setContentView(root);
         applyImmersiveCompat();
 
-        loading.post(this::initializeWebRenderer);
+        // All Android views are created on the main thread. Posting only delays initialization
+        // until the loading hierarchy is attached; it never creates views from a worker thread.
+        if (forceFallback) loading.post(() -> showFallback("Fallback solicitado para validación"));
+        else loading.post(this::initializeWebRenderer);
+    }
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        updateDemoScene(intent);
+    }
+
+    private void updateDemoScene(Intent intent) {
+        String requested = intent == null ? null : intent.getStringExtra("demo");
+        demoScene = requested == null ? "" : requested.trim().toLowerCase(Locale.US);
+        forceFallback = intent != null && intent.getBooleanExtra("force_fallback", false);
     }
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
@@ -81,11 +102,12 @@ public final class LandscapeMainActivity extends Activity {
             webView = new WebView(this);
             webView.setBackgroundColor(Color.TRANSPARENT);
             webView.setVisibility(View.INVISIBLE);
-            webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+            // Do not force an additional Android hardware layer. The application and WebView
+            // are hardware accelerated already, which is safer on Samsung GPU drivers.
 
             WebSettings settings = webView.getSettings();
             settings.setJavaScriptEnabled(true);
-            settings.setDomStorageEnabled(false);
+            settings.setDomStorageEnabled(true);
             settings.setDatabaseEnabled(false);
             settings.setAllowFileAccess(false);
             settings.setAllowContentAccess(false);
@@ -131,7 +153,7 @@ public final class LandscapeMainActivity extends Activity {
         column.setPadding(48, 32, 48, 32);
 
         TextView title = new TextView(this);
-        title.setText("ROYAL SPIN 3.0");
+        title.setText("ROYAL SPIN 3.2");
         title.setTextColor(0xFFFFDD75);
         title.setTextSize(37f);
         title.setGravity(Gravity.CENTER);
@@ -139,7 +161,7 @@ public final class LandscapeMainActivity extends Activity {
                 android.graphics.Typeface.BOLD);
 
         TextView subtitle = new TextView(this);
-        subtitle.setText("ACTIVANDO MOTOR WEBGL CINEMATIC");
+        subtitle.setText("ACTIVANDO ULTRA SPECTACLE");
         subtitle.setTextColor(0xFFBFD8EA);
         subtitle.setTextSize(13f);
         subtitle.setGravity(Gravity.CENTER);
@@ -263,8 +285,10 @@ public final class LandscapeMainActivity extends Activity {
             if (free) freeSpins--;
             else credits -= totalBet;
 
-            LandscapeSlotEngine.SpinResult result =
-                    LandscapeSlotEngine.spin(random, betPerLine);
+            String scene = demoScene;
+            LandscapeSlotEngine.SpinResult result = scene.isEmpty()
+                    ? LandscapeSlotEngine.spin(random, betPerLine)
+                    : LandscapeSlotEngine.demo(scene, betPerLine);
             credits += result.payout;
             if (result.freeSpinsTriggered) {
                 freeSpins = Math.min(90, freeSpins + 12);
@@ -274,8 +298,10 @@ public final class LandscapeMainActivity extends Activity {
             try {
                 json.put("payout", result.payout);
                 json.put("feature", result.freeSpinsTriggered);
-                json.put("anticipation", result.freeSpinsTriggered
+                json.put("anticipation", "anticipation".equals(scene)
+                        || result.freeSpinsTriggered
                         || result.payout >= totalBet * 5);
+                json.put("demo", scene);
                 JSONArray board = new JSONArray();
                 for (int reel = 0; reel < result.board.length; reel++) {
                     JSONArray column = new JSONArray();
@@ -347,12 +373,26 @@ public final class LandscapeMainActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         applyImmersiveCompat();
-        if (webView != null) webView.onResume();
+        if (webView != null) {
+            webView.onResume();
+            try {
+                webView.evaluateJavascript(
+                        "window.RoyalAudio&&window.RoyalAudio.resume&&window.RoyalAudio.resume();",
+                        null);
+            } catch (Throwable ignored) {}
+        }
         if (fallbackView != null) fallbackView.onHostResume();
     }
 
     @Override protected void onPause() {
-        if (webView != null) webView.onPause();
+        if (webView != null) {
+            try {
+                webView.evaluateJavascript(
+                        "window.RoyalAudio&&window.RoyalAudio.suspend&&window.RoyalAudio.suspend();",
+                        null);
+            } catch (Throwable ignored) {}
+            webView.onPause();
+        }
         if (fallbackView != null) fallbackView.onHostPause();
         super.onPause();
     }
@@ -363,11 +403,17 @@ public final class LandscapeMainActivity extends Activity {
         if (webView != null) {
             try {
                 webView.removeJavascriptInterface("RoyalNative");
+                webView.stopLoading();
+                webView.loadUrl("about:blank");
+                webView.clearHistory();
+                webView.removeAllViews();
                 webView.destroy();
             } catch (Throwable ignored) {}
+            webView = null;
         }
         if (fallbackView != null) {
             try { fallbackView.release(); } catch (Throwable ignored) {}
+            fallbackView = null;
         }
         super.onDestroy();
     }
