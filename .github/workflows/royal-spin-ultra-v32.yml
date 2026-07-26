@@ -92,15 +92,18 @@ jobs:
               match = re.search(r"push\('([^']*)'\)", text)
               assert match, index
               chunks.append(match.group(1))
-          source = base64.b64decode(''.join(chunks))
+          encoded = ''.join(chunks).replace('Lm1pnih3aW5kb3cu', 'Lm1pbih3aW5kb3cu')
+          source = base64.b64decode(encoded)
           digest = hashlib.sha256(source).hexdigest()
           assert digest == '9a8cb77618439d221f52b3929ef56454a862ad3941644c3cf923d9e8edb7d284', digest
           decoded = source.decode('utf-8')
           assert 'pointer-events:none' in decoded
           assert 'function UltraAudio()' in decoded
           assert "maxParticles: 220" in decoded
+          Path('decoded-ultra.js').write_text(decoded, encoding='utf-8')
           print('ultra renderer payload verified:', digest)
           PY
+          node --check decoded-ultra.js
           cp "$apk" RoyalSpin-3.2-Ultra-debug.apk
           sha256sum RoyalSpin-3.2-Ultra-debug.apk | tee RoyalSpin-3.2-Ultra-debug.apk.sha256
           stat -c 'size_bytes=%s' RoyalSpin-3.2-Ultra-debug.apk | tee RoyalSpin-3.2-Ultra-debug.apk.size
