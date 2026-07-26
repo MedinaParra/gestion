@@ -50,15 +50,20 @@ public final class LandscapeSlotEngine {
         return evaluate(board, betPerLine);
     }
 
+    /**
+     * Deterministic visual-validation boards. They are only selected through the explicit
+     * Android intent extra "demo" and never affect normal random play.
+     */
     public static SpinResult demo(String scene, int betPerLine) {
         int[][] board = {
                 {Q, J, SEVEN},
-                {WILD, DIAMOND, K},
-                {Q, BAR, A},
-                {J, Q, K},
-                {BELL, DIAMOND, WILD}
+                {K, DIAMOND, A},
+                {A, BAR, K},
+                {J, Q, BELL},
+                {BELL, DIAMOND, A}
         };
-        if ("bell".equals(scene)) {
+
+        if ("bell".equals(scene) || "normal".equals(scene)) {
             board[0][1] = BELL; board[1][1] = BELL; board[2][1] = BELL;
         } else if ("bar".equals(scene)) {
             board[0][1] = BAR; board[1][1] = BAR; board[2][1] = BAR;
@@ -66,8 +71,20 @@ public final class LandscapeSlotEngine {
             board[0][1] = SEVEN; board[1][1] = SEVEN; board[2][1] = SEVEN;
         } else if ("diamond".equals(scene)) {
             board[0][1] = DIAMOND; board[1][1] = DIAMOND; board[2][1] = DIAMOND;
-        } else if ("wild".equals(scene) || "feature".equals(scene)) {
+        } else if ("wild".equals(scene) || "big".equals(scene)) {
             board[0][1] = WILD; board[1][1] = WILD; board[2][1] = WILD;
+            board[3][1] = WILD;
+        } else if ("royal".equals(scene)) {
+            for (int reel = 0; reel < REELS; reel++) board[reel][1] = WILD;
+        } else if ("feature".equals(scene) || "free".equals(scene)) {
+            board[0][1] = WILD; board[1][1] = WILD; board[2][1] = WILD;
+            board[3][1] = DIAMOND; board[4][1] = WILD;
+        } else if ("anticipation".equals(scene)) {
+            board[0][1] = DIAMOND;
+            board[1][1] = DIAMOND;
+            board[2][1] = J;
+            board[3][1] = BAR;
+            board[4][1] = WILD;
         }
         return evaluate(board, betPerLine);
     }

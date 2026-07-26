@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <radialGradient id="bg" cx="42%" cy="28%" r="85%"><stop stop-color="#0e6b99"/><stop offset=".55" stop-color="#071a38"/><stop offset="1" stop-color="#030712"/></radialGradient>
+    <linearGradient id="ice" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ffffff"/><stop offset=".2" stop-color="#90f5ff"/><stop offset=".52" stop-color="#36a7ff"/><stop offset=".76" stop-color="#b95cff"/><stop offset="1" stop-color="#eefcff"/></linearGradient>
+    <filter id="glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect x="7" y="7" width="242" height="242" rx="45" fill="url(#bg)" stroke="#7aefff" stroke-width="9"/>
+  <path d="M49 91l39-44h80l39 44-79 116z" fill="url(#ice)" stroke="#e9ffff" stroke-width="5" filter="url(#glow)"/>
+  <path d="M49 91h158M88 47l40 44 40-44M88 47L76 91l52 116M168 47l12 44-52 116M76 91l52 0 52 0" fill="none" stroke="#2266a6" stroke-width="4" opacity=".72"/>
+  <path d="M79 73l15-16h24l-19 20z" fill="#fff" opacity=".88"/>
+  <circle cx="49" cy="46" r="5" fill="#fff"/><circle cx="211" cy="64" r="4" fill="#fff"/>
+</svg>

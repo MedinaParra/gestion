@@ -29,10 +29,22 @@ public class LandscapeSlotEngineTest {
         assertTrue(result.triggerWildCount >= 3);
     }
 
-    @Test public void bellBarAndSevenScenesProduceWins() {
+    @Test public void deterministicCaptureScenesCoverAllRewardLevels() {
+        LandscapeSlotEngine.SpinResult normal = LandscapeSlotEngine.demo("normal", 5);
+        LandscapeSlotEngine.SpinResult big = LandscapeSlotEngine.demo("big", 5);
+        LandscapeSlotEngine.SpinResult royal = LandscapeSlotEngine.demo("royal", 5);
+        LandscapeSlotEngine.SpinResult free = LandscapeSlotEngine.demo("free", 5);
+        assertTrue(normal.payout > 0);
+        assertTrue(big.payout > normal.payout);
+        assertTrue(royal.payout > big.payout);
+        assertTrue(free.freeSpinsTriggered);
+    }
+
+    @Test public void bellBarSevenAndDiamondScenesProduceWins() {
         assertFalse(LandscapeSlotEngine.demo("bell", 5).wins.isEmpty());
         assertFalse(LandscapeSlotEngine.demo("bar", 5).wins.isEmpty());
         assertFalse(LandscapeSlotEngine.demo("seven", 5).wins.isEmpty());
+        assertFalse(LandscapeSlotEngine.demo("diamond", 5).wins.isEmpty());
     }
 
     @Test public void payoutScalesWithBet() {
