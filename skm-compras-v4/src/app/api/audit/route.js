@@ -1,0 +1,1 @@
+import {NextResponse} from 'next/server';import {getSession,requireUser} from '../../../lib/session';import {readState} from '../../../lib/store';export async function GET(){try{requireUser(await getSession());const s=await readState();return NextResponse.json({audit:s.audit||[]})}catch(e){return NextResponse.json({error:e.message},{status:e.status||500})}}
