@@ -7,9 +7,11 @@ async function streamText(stream){const r=stream.getReader(),parts=[];for(;;){co
 const revisions=new WeakMap();
 export async function readState(){
   // A missing store is empty; a failed read is never an empty, writable snapshot.
-  const r=await get(PATH,{access:'private',useCache:false});
+  // Compression can weaken the HTTP ETag (W/), which cannot satisfy If-Match.
+  // Request the identity representation: the returned strong ETag binds this exact body.
+  const r=await get(PATH,{access:'private',useCache:false,headers:{'Accept-Encoding':'identity'}});
   if(!r){const s=structuredClone(EMPTY);revisions.set(s,null);return s}
-  if(r.statusCode!==200||!r.blob?.etag)throw new Error('No se pudo leer una revisión segura del registro');
+  if(r.statusCode!==200||!r.blob?.etag||/^W\//i.test(r.blob.etag)){const e=new Error('No se obtuvo una revisión fuerte del registro. No se guardaron cambios; vuelve a intentar.');e.status=503;throw e}
   const parsed=JSON.parse(await streamText(r.stream));
   if(!Array.isArray(parsed.requests)||!Array.isArray(parsed.audit))throw new Error('Registro inválido; escritura bloqueada');
   const s={...parsed,users:parsed.users||{}};revisions.set(s,r.blob.etag);return s;
