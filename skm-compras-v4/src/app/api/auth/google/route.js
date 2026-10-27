@@ -13,7 +13,6 @@ export async function POST(req){try{
   const email=String(p.email||'').toLowerCase();
   if(p.aud!==client||p.email_verified!=='true'||!email.endsWith(`@${domain}`))return NextResponse.json({error:'Cuenta no autorizada para este portal'},{status:403});
   const user={email,name:p.name||email,picture:p.picture||'',role:roleFor(email)};
-  await setSession(user);
-  const state=await readState();state.users=state.users||{};state.users[email]={email,name:user.name,role:user.role,lastLogin:new Date().toISOString()};addAudit(state,user,'SESSION_LOGIN');await writeState(state);
+  const state=await readState();state.users=state.users||{};state.users[email]={email,name:user.name,role:user.role,lastLogin:new Date().toISOString()};addAudit(state,user,'SESSION_LOGIN');await writeState(state);await setSession(user);
   return NextResponse.json({user});
-}catch(e){return NextResponse.json({error:e.message||'No fue posible iniciar sesión'},{status:500})}}
+}catch(e){return NextResponse.json({error:e.message||'No fue posible iniciar sesión'},{status:e.status||500})}}

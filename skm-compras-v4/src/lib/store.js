@@ -4,10 +4,29 @@ const PATH='skm-compras/meta/requests.json';
 const EMPTY={requests:[],audit:[],users:{}};
 
 async function streamText(stream){const r=stream.getReader(),parts=[];for(;;){const x=await r.read();if(x.done)break;parts.push(Buffer.from(x.value))}return Buffer.concat(parts).toString('utf8')}
-export async function readState(){try{const r=await get(PATH,{access:'private',useCache:false});if(!r||r.statusCode&&r.statusCode!==200)return structuredClone(EMPTY);const s=JSON.parse(await streamText(r.stream));return {requests:Array.isArray(s.requests)?s.requests:[],audit:Array.isArray(s.audit)?s.audit:[],users:s.users||{}}}catch{return structuredClone(EMPTY)}}
-export async function writeState(s){await put(PATH,JSON.stringify(s),{access:'private',contentType:'application/json',allowOverwrite:true,addRandomSuffix:false});return s}
+const revisions=new WeakMap();
+export async function readState(){
+  // A missing store is empty; a failed read is never an empty, writable snapshot.
+  const r=await get(PATH,{access:'private',useCache:false});
+  if(!r){const s=structuredClone(EMPTY);revisions.set(s,null);return s}
+  if(r.statusCode!==200||!r.blob?.etag)throw new Error('No se pudo leer una revisión segura del registro');
+  const parsed=JSON.parse(await streamText(r.stream));
+  if(!Array.isArray(parsed.requests)||!Array.isArray(parsed.audit))throw new Error('Registro inválido; escritura bloqueada');
+  const s={...parsed,users:parsed.users||{}};revisions.set(s,r.blob.etag);return s;
+}
+export async function writeState(s){
+  if(!revisions.has(s))throw new Error('No se puede guardar sin una revisión del registro');
+  const etag=revisions.get(s);
+  try{
+    const result=await put(PATH,JSON.stringify(s),{access:'private',contentType:'application/json',addRandomSuffix:false,...(etag?{ifMatch:etag,allowOverwrite:true}:{allowOverwrite:false})});
+    revisions.set(s,result.etag);return s;
+  }catch(error){
+    if(error?.status===412||error?.statusCode===412||/precondition|condition.*match|already exists/i.test(`${error?.name} ${error?.message}`)){const e=new Error('El registro cambió en otra sesión. Actualiza y vuelve a intentar.');e.status=409;throw e}
+    throw error;
+  }
+}
 export function safeName(s='documento.pdf'){return String(s).normalize('NFKD').replace(/[^a-zA-Z0-9._-]+/g,'_').replace(/_+/g,'_').slice(0,120)}
-export function addAudit(state,user,action,requestId=null,meta={}){state.audit=state.audit||[];state.audit.unshift({id:crypto.randomUUID(),at:new Date().toISOString(),user:user.email,name:user.name||user.email,action,requestId,meta});state.audit=state.audit.slice(0,1000)}
+export function addAudit(state,user,action,requestId=null,meta={}){state.audit=state.audit||[];state.audit.unshift({id:crypto.randomUUID(),at:new Date().toISOString(),user:user.email,name:user.name||user.email,action,requestId,meta})}
 export function amountOf(r){const a=r.amounts||r.ocr?.amounts||{};return {neto:Number(a.neto||r.neto||r.amount||0)||0,iva:Number(a.iva||r.iva||0)||0,total:Number(a.total||r.total||0)||0}}
 function normalizeDoc(d,r,version=1){if(!d)return null;const p=d.pathname||d.path||d.blobPath||d.pdfPath||d.storagePath||d.key||d.blob?.pathname||d.file?.pathname;return p?{...d,pathname:p,version:Number(d.version||version),filename:d.filename||d.name||d.originalName||r.filename||r.fileName||'cotizacion.pdf'}:null}
 export function latestDoc(r){

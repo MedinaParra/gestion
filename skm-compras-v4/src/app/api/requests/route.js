@@ -1,12 +1,19 @@
 import crypto from 'node:crypto';
 import {NextResponse} from 'next/server';
 import {put} from '@vercel/blob';
-import {getSession,requireUser} from '../../../lib/session';
+import {getSession,requireUser,roleFor} from '../../../lib/session';
 import {readState,writeState,addAudit,safeName,nextId} from '../../../lib/store';
 import {validateAmounts,EXTRACTION_VERSION} from '../../../lib/amounts.mjs';
+import {requireAdmin,requireSameOrigin,moveToTrash,fail} from '../../../lib/request-lifecycle.mjs';
 export const runtime='nodejs';
 
-export async function GET(){try{requireUser(await getSession());const state=await readState();return NextResponse.json({requests:state.requests||[]})}catch(e){return NextResponse.json({error:e.message},{status:e.status||500})}}
+export async function GET(req){try{const user=requireUser(await getSession());const trash=new URL(req.url).searchParams.get('view')==='trash';if(trash)requireAdmin(user,roleFor);const state=await readState();return NextResponse.json({requests:state.requests.filter(r=>trash?Boolean(r.deletedAt):!r.deletedAt)},{headers:{'Cache-Control':'private, no-store'}})}catch(e){return NextResponse.json({error:e.message},{status:e.status||500})}}
+
+export async function PATCH(req){try{
+ const user=requireAdmin(requireUser(await getSession()),roleFor);requireSameOrigin(req);
+ const body=await req.json();if(body.confirmId!==body.id)fail('Confirma el identificador de la solicitud',400);const state=await readState();const item=moveToTrash(state,user,body.id,body.action,addAudit);
+ await writeState(state);return NextResponse.json({request:item});
+}catch(e){return NextResponse.json({error:e.message},{status:e.status||500})}}
 
 export async function POST(req){try{
   const user=requireUser(await getSession());const fd=await req.formData();const file=fd.get('file');
@@ -14,7 +21,7 @@ export async function POST(req){try{
   if(!ot||!supplier||!file||file.type!=='application/pdf')return NextResponse.json({error:'OT, proveedor y cotización PDF son obligatorios'},{status:400});
   if(file.size>20*1024*1024)return NextResponse.json({error:'El PDF supera 20 MB'},{status:413});
   const state=await readState(),id=nextId(state.requests),bytes=Buffer.from(await file.arrayBuffer()),sha256=crypto.createHash('sha256').update(bytes).digest('hex');
-  const pathname=`skm-compras/requests/${id}/v1-${safeName(file.name||'cotizacion.pdf')}`;
+  const pathname=`skm-compras/requests/${id}/v1-${crypto.randomUUID()}-${safeName(file.name||'cotizacion.pdf')}`;
   await put(pathname,bytes,{access:'private',contentType:'application/pdf',addRandomSuffix:false});
   let signers=String(fd.get('signers')||'').split(/[;,\n]/).map(x=>x.trim().toLowerCase()).filter(x=>x.endsWith('@skmindustrial.cl'));
   if(!signers.includes(user.email.toLowerCase()))signers.unshift(user.email.toLowerCase());signers=[...new Set(signers)];
