@@ -34,16 +34,36 @@ export async function stampFirstPage(bytes,stamp,previous=[]){
   if(((page.getRotation().angle%360)+360)%360!==0)throw review('la primera página está rotada; debe revisarse la ubicación antes de firmar.');
   const crop=page.getCropBox(),media=page.getMediaBox();
   if(crop.x<media.x || crop.y<media.y || crop.x+crop.width>media.x+media.width || crop.y+crop.height>media.y+media.height)throw review('el recorte de página no está contenido en su formato.');
-  // Compact, borderless four-line personal stamp, based on the supplied SKM reference.
-  // New stamps occupy discrete right-to-left slots, never a page-wide audit panel.
-  const gap=12,height=42,margin=20,width=90;
-  const columns=Math.floor((crop.width-margin*2+gap)/(width+gap));
-  if(columns<1)throw review('la primera página es demasiado estrecha.');
-  const existing=previous.map(s=>s.placement).filter(p=>p?.page===1 && p?.kind==='verified-compact-v2');
-  const index=existing.length,column=index%columns,row=Math.floor(index/columns);
-  const box={x:crop.x+crop.width-margin-width-column*(width+gap),y:crop.y+margin+row*(height+gap),width,height};
-  // Never search table cells or white gaps higher up the document.
+  const hasSignature=stamp.signaturePng!=null;
+  // The server decides whether this act explicitly authorizes using the saved graphic.
+  // This helper never fetches a profile or re-applies another person's signature.
+  let graphic=null;
+  if(hasSignature){
+    const input=stamp.signaturePng;
+    if(!(input instanceof Uint8Array)||input.length>512*1024||input.length<24||![137,80,78,71,13,10,26,10].every((v,i)=>input[i]===v))throw review('la imagen de firma no es un PNG válido dentro del límite permitido.');
+    // Inspect IHDR before decompression to reject oversized compressed payloads early.
+    const header=new DataView(input.buffer,input.byteOffset,input.byteLength);
+    if(input.length<33||header.getUint32(8)!==13||String.fromCharCode(...input.subarray(12,16))!=='IHDR'||header.getUint32(16)<2||header.getUint32(20)<2||header.getUint32(16)>2000||header.getUint32(20)>1000)throw review('las dimensiones de la imagen de firma no son seguras.');
+    try{graphic=await pdf.embedPng(input)}catch{throw review('no se pudo abrir la imagen de firma; no se modificó el documento.');}
+    if(graphic.width<2||graphic.height<2||graphic.width>2000||graphic.height>1000)throw review('las dimensiones de la imagen de firma no son seguras.');
+  }
+  // Compact adjacent slots, right to left. Legacy stamps retain their original size.
+  // Mixed legacy/profile rows are positioned from actual stored rectangles, not an
+  // index multiplied by today's dimensions (which would overlap older signatures).
+  const gap=12,height=hasSignature?72:42,margin=20,width=(hasSignature||stamp.rut)?110:90;
+  if(crop.width<margin*2+width)throw review('la primera página es demasiado estrecha.');
+  const knownKinds=new Set(['verified-compact-v2','verified-profile-v3']);
+  const existing=previous.map(s=>s.placement).filter(p=>p?.page===1&&knownKinds.has(p.kind));
+  for(const p of existing){
+    if(![p.x,p.y,p.width,p.height].every(Number.isFinite)||p.width<=0||p.height<=0||p.x<crop.x||p.y<crop.y||p.x+p.width>crop.x+crop.width||p.y+p.height>crop.y+crop.height)throw review('una ubicación histórica no es válida; se requiere revisión antes de agregar otra firma.');
+  }
+  const last=existing.at(-1);
+  let x=last?last.x-gap-width:crop.x+crop.width-margin-width,y=last?last.y:crop.y+margin;
+  if(x<crop.x+margin){x=crop.x+crop.width-margin-width;y=Math.max(...existing.map(p=>p.y+p.height))+gap;}
+  const box={x,y,width,height};
+  // Wrap only inside the verified lower band. Never create a page or search table cells.
   if(box.y+height>crop.y+crop.height*.28)throw review('no queda espacio en la zona inferior de la primera hoja; no se agregó ninguna página.');
+  if(existing.some(p=>p.x<box.x+width+4&&p.x+p.width>box.x-4&&p.y<box.y+height+4&&p.y+p.height>box.y-4))throw review('la nueva firma se superpondría a una ubicación histórica.');
   const {getDocument}=await import('pdfjs-dist/legacy/build/pdf.mjs');
   const loading=getDocument({data:Uint8Array.from(bytes),standardFontDataUrl,useSystemFonts:false,disableFontFace:true,isEvalSupported:false,stopAtErrors:true});
   let document;
@@ -78,10 +98,14 @@ export async function stampFirstPage(bytes,stamp,previous=[]){
     {text:displayName,font:bold,size:8},
     {text:String(stamp.rut||label),font:bold,size:7},
     {text:String(stamp.title||(stamp.role==='ADMIN'?'Rol: administrador':'Rol: firmante')),font:bold,size:8},
-    {text:'SKM INDUSTRIAL',font:bold,size:8},
+    {text:(hasSignature||stamp.rut)?`${label} · SKM INDUSTRIAL`:'SKM INDUSTRIAL',font:bold,size:(hasSignature||stamp.rut)?7:8},
   ];
   const fittedRows=rows.map(r=>({...r,...fitted(r.text,r.font,width,r.size)}));
-  fittedRows.forEach((r,i)=>page.drawText(r.text,{x:box.x+(width-r.font.widthOfTextAtSize(r.text,r.size))/2,y:box.y+height-8-i*10,font:r.font,size:r.size,color:rgb(0,0,0)}));
+  if(graphic){
+    const scale=Math.min(width/graphic.width,26/graphic.height),w=graphic.width*scale,h=graphic.height*scale;
+    page.drawImage(graphic,{x:box.x+(width-w)/2,y:box.y+height-26+(26-h)/2,width:w,height:h});
+  }
+  fittedRows.forEach((r,i)=>page.drawText(r.text,{x:box.x+(width-r.font.widthOfTextAtSize(r.text,r.size))/2,y:box.y+height-(hasSignature?35:8)-i*(hasSignature?9:10),font:r.font,size:r.size,color:rgb(0,0,0)}));
 
-  return {bytes:await pdf.save(),placement:{...box,page:1,kind:'verified-compact-v2'},pageCount:pdf.getPageCount()};
+  return {bytes:await pdf.save(),placement:{...box,page:1,kind:hasSignature?'verified-profile-v3':'verified-compact-v2'},pageCount:pdf.getPageCount()};
 }

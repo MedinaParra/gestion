@@ -5,14 +5,15 @@ import {getSession,requireUser,roleFor} from '../../../lib/session';
 import {readState,writeState,addAudit,safeName,nextId} from '../../../lib/store';
 import {validateAmounts,EXTRACTION_VERSION} from '../../../lib/amounts.mjs';
 import {requireAdmin,requireSameOrigin,moveToTrash,fail} from '../../../lib/request-lifecycle.mjs';
+import {publicRequest} from '../../../lib/profile.mjs';
 export const runtime='nodejs';
 
-export async function GET(req){try{const user=requireUser(await getSession());const trash=new URL(req.url).searchParams.get('view')==='trash';if(trash)requireAdmin(user,roleFor);const state=await readState();return NextResponse.json({requests:state.requests.filter(r=>trash?Boolean(r.deletedAt):!r.deletedAt)},{headers:{'Cache-Control':'private, no-store'}})}catch(e){return NextResponse.json({error:e.message},{status:e.status||500})}}
+export async function GET(req){try{const user=requireUser(await getSession());const trash=new URL(req.url).searchParams.get('view')==='trash';if(trash)requireAdmin(user,roleFor);const state=await readState();return NextResponse.json({requests:state.requests.filter(r=>trash?Boolean(r.deletedAt):!r.deletedAt).map(publicRequest)},{headers:{'Cache-Control':'private, no-store'}})}catch(e){return NextResponse.json({error:e.message},{status:e.status||500})}}
 
 export async function PATCH(req){try{
  const user=requireAdmin(requireUser(await getSession()),roleFor);requireSameOrigin(req);
  const body=await req.json();if(body.confirmId!==body.id)fail('Confirma el identificador de la solicitud',400);const state=await readState();const item=moveToTrash(state,user,body.id,body.action,addAudit);
- await writeState(state);return NextResponse.json({request:item});
+ await writeState(state);return NextResponse.json({request:publicRequest(item)});
 }catch(e){return NextResponse.json({error:e.message},{status:e.status||500})}}
 
 export async function POST(req){try{
@@ -30,5 +31,5 @@ export async function POST(req){try{
   const amounts=verified?ocr.amounts:{neto:null,iva:null,total:null},now=new Date().toISOString();
   if(ocr)ocr={...ocr,amounts,status:verified?ocr.status:'REVIEW_REQUIRED',confidence:verified&&Number.isFinite(ocr.confidence)?Math.max(0,Math.min(100,ocr.confidence)):null,extractionVersion:EXTRACTION_VERSION};
   const item={id,ot,supplier,description,status:'IN_SIGNATURES',createdAt:now,createdBy:user.email,updatedAt:now,signers,signatures:[],amounts,ocr:ocr?{...ocr,at:now,user:user.email}:null,amount:Number(amounts.neto||0),neto:Number(amounts.neto||0),iva:Number(amounts.iva||0),total:Number(amounts.total||0),versions:[{version:1,pathname,filename:file.name||'cotizacion.pdf',sha256,createdAt:now,createdBy:user.email,kind:'ORIGINAL'}]};
-  state.requests.unshift(item);addAudit(state,user,'REQUEST_CREATED',id,{ot,supplier,sha256,ocrMethod:ocr?.method||null});await writeState(state);return NextResponse.json({request:item});
+  state.requests.unshift(item);addAudit(state,user,'REQUEST_CREATED',id,{ot,supplier,sha256,ocrMethod:ocr?.method||null});await writeState(state);return NextResponse.json({request:publicRequest(item)});
 }catch(e){return NextResponse.json({error:e.message||'No fue posible crear la solicitud'},{status:e.status||500})}}

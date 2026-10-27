@@ -1,5 +1,7 @@
 'use client';
 import {useEffect,useMemo,useRef,useState} from 'react';
+import Profile from './profile';
+import {latestDoc} from '../lib/document-reference.mjs';
 import {displayAmounts,originalVersion} from '../lib/amounts.mjs';
 
 import {extractPdfValues} from '../lib/pdf-extraction.mjs';
@@ -20,8 +22,8 @@ function Login({clientId,onDone}){useEffect(()=>{if(!clientId)return;const s=doc
 function Brand(){return <div className="brand"><div className="mark">SKM</div><div><b>SKM INDUSTRIAL</b><span>CONTROL DE COMPRAS</span></div></div>}
 
 export default function Page(){
-  const [user,setUser]=useState(undefined),[clientId,setClientId]=useState(''),[rows,setRows]=useState([]),[trash,setTrash]=useState([]),[audit,setAudit]=useState([]),[tab,setTab]=useState('inicio'),[open,setOpen]=useState(null),[modal,setModal]=useState(false),[busy,setBusy]=useState(false),[selected,setSelected]=useState([]),[notice,setNotice]=useState('');
-  const operation=useRef(false),loadVersion=useRef(0);
+  const [user,setUser]=useState(undefined),[clientId,setClientId]=useState(''),[rows,setRows]=useState([]),[trash,setTrash]=useState([]),[audit,setAudit]=useState([]),[tab,setTab]=useState('inicio'),[open,setOpen]=useState(null),[modal,setModal]=useState(false),[busy,setBusy]=useState(false),[selected,setSelected]=useState([]),[notice,setNotice]=useState(''),[signIntent,setSignIntent]=useState(null);
+  const operation=useRef(false),loadVersion=useRef(0),signGeneration=useRef(0);
   const json=async(url,options)=>{const r=await fetch(url,options),j=await r.json();if(!r.ok)throw new Error(j.error||'No fue posible completar la operación');return j};
   const load=async()=>{
     const version=++loadVersion.current;
@@ -46,26 +48,37 @@ export default function Page(){
     try{await json('/api/requests',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,action,confirmId:id})});setOpen(null);setSelected(ids=>ids.filter(x=>x!==id));setNotice(`${id}: ${action==='trash'?'movida a la papelera. Puedes restaurarla desde Papelera.':'restaurada con sus documentos y firmas.'}`)}catch(e){setNotice(e.message)}
     finally{try{await load()}catch(e){setNotice(e.message)}operation.current=false;setBusy(false)}
   }
+  const signingItem=r=>{const doc=latestDoc(r)||{};return {id:r.id,expectedVersion:Number(doc.version||1),expectedSha256:doc.sha256||null}};
   async function sign(id,action='SIGNED'){
-    if(operation.current||!confirm(action==='APPROVED'?'¿Confirmas la aprobación final?':'¿Firmar la versión visible del PDF?'))return;
-    operation.current=true;setBusy(true);setNotice('');
-    try{await json('/api/sign',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,action})})}catch(e){setNotice(e.message)}
-    finally{try{await load()}catch(e){setNotice(e.message)}operation.current=false;setBusy(false)}
+    if(operation.current||signIntent)return;const item=rows.find(r=>r.id===id);if(!item)return;
+    operation.current=true;setBusy(true);setNotice('');const generation=++signGeneration.current;
+    try{const {profile}=await json('/api/profile',{cache:'no-store'});if(generation===signGeneration.current)setSignIntent({nonce:generation,items:[signingItem(item)],profile,action})}catch(e){setNotice(e.message)}finally{operation.current=false;setBusy(false)}
   }
   async function massSign(){
-    if(operation.current||!selected.length)return;
-    operation.current=true;setBusy(true);setNotice('');
+    if(operation.current||signIntent||!selected.length)return;
+    operation.current=true;setBusy(true);setNotice('');const generation=++signGeneration.current;
     try{
       const fresh=await json('/api/requests',{cache:'no-store'}),eligible=fresh.requests.filter(r=>selected.includes(r.id)&&!r.deletedAt&&!['APPROVED','REJECTED'].includes(r.status));
       if(eligible.length!==selected.length){setSelected(eligible.map(r=>r.id));throw new Error('La selección cambió en otra sesión. Revisa las solicitudes activas antes de firmar.')}
-      const total=eligible.reduce((s,r)=>s+(amounts(r).neto||0),0);
-      if(!confirm(`Vas a firmar ${eligible.length} solicitud(es) por un neto combinado de ${money(total)}. ¿Continuar?`))return;
-      for(const r of eligible){try{await json('/api/sign',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:r.id,action:'SIGNED'})})}catch(e){throw new Error(`${r.id}: ${e.message}. Se detuvo la firma masiva; revisa las firmas ya registradas.`)}}
-      setSelected([]);
-    }catch(e){setNotice(e.message)}finally{try{await load()}catch(e){setNotice(e.message)}operation.current=false;setBusy(false)}
+      const {profile}=await json('/api/profile',{cache:'no-store'});
+      if(generation===signGeneration.current)setSignIntent({nonce:generation,items:eligible.map(signingItem),profile,action:'SIGNED'});
+    }catch(e){setNotice(e.message)}finally{operation.current=false;setBusy(false)}
   }
-  const navigation=[['inicio','Inicio'],['solicitudes','Solicitudes'],['masiva','Firma masiva'],...(user.role==='ADMIN'?[['papelera','Papelera']]:[]),['audit','Auditoría']];
-  return <div className="shell"><aside><Brand/><nav><span>CONTROL</span>{navigation.map(([k,l])=><button key={k} className={tab===k?'active':''} onClick={()=>{setTab(k);setOpen(null)}}>{l}</button>)}</nav><div className="user"><i>{(user.name||user.email)[0]}</i><div><b>{user.name||user.email}</b><span>{user.role==='ADMIN'?'Administrador':'Usuario'}</span></div></div></aside><main className="content"><header><div><span className="eyebrow">MESA DE CONTROL</span><h1>{tab==='inicio'?'Control de Compras':navigation.find(([key])=>key===tab)?.[1]}</h1></div><div className="actions"><button className="ghost" onClick={async()=>{await fetch('/api/auth/logout',{method:'POST'});location.reload()}}>Salir</button><button className="primary" onClick={()=>setModal(true)}>+ Nueva solicitud</button></div></header>{notice&&<p className="lifecycleNotice" role="status">{notice}</p>}{current?<Detail key={current.id} item={current} user={user} onClose={()=>setOpen(null)} onSign={sign} onTrash={id=>lifecycle(id,'trash')} busy={busy} refresh={load}/>:tab==='inicio'?<Home pending={pending} audit={audit} onOpen={setOpen} onCreate={()=>setModal(true)}/>:tab==='solicitudes'?<List rows={rows} onOpen={setOpen}/>:tab==='masiva'?<Mass rows={pending} selected={selected} setSelected={setSelected} onOpen={setOpen} onSign={massSign} busy={busy}/>:tab==='papelera'&&user.role==='ADMIN'?<Trash rows={trash} busy={busy} onRestore={id=>lifecycle(id,'restore')}/>:<Audit rows={audit}/>}</main>{modal&&<CreateModal onClose={()=>setModal(false)} onCreated={async id=>{setModal(false);await load();setOpen(id)}}/>}</div>
+  async function confirmSignature(useProfileSignature){
+    if(operation.current||!signIntent)return;const intent=signIntent;
+    operation.current=true;setBusy(true);setNotice('');let completed=0;
+    try{
+      for(const item of intent.items){try{await json('/api/sign',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...item,action:intent.action,consent:true,profileRevision:intent.profile.revision||null,useProfileSignature})});completed++}catch(e){throw new Error(`${item.id}: ${e.message}. Acciones completadas: ${completed}; las restantes no se enviaron.`)}}
+      setSelected([]);setNotice(`Acción registrada en ${completed} documento(s).`);
+    }catch(e){setNotice(e.message)}finally{setSignIntent(null);try{await load()}catch(e){setNotice(e.message)}operation.current=false;setBusy(false)}
+  }
+  const navigation=[['inicio','Inicio'],['solicitudes','Solicitudes'],['masiva','Firma masiva'],...(user.role==='ADMIN'?[['papelera','Papelera']]:[]),['perfil','Mi perfil'],['audit','Auditoría']];
+  return <div className="shell"><aside><Brand/><nav><span>CONTROL</span>{navigation.map(([k,l])=><button key={k} className={tab===k?'active':''} onClick={()=>{signGeneration.current++;setSignIntent(null);setTab(k);setOpen(null)}}>{l}</button>)}</nav><div className="user"><i>{(user.name||user.email)[0]}</i><div><b>{user.name||user.email}</b><span>{user.role==='ADMIN'?'Administrador':'Usuario'}</span></div></div></aside><main className="content"><header><div><span className="eyebrow">MESA DE CONTROL</span><h1>{tab==='inicio'?'Control de Compras':navigation.find(([key])=>key===tab)?.[1]}</h1></div><div className="actions"><button className="ghost" onClick={async()=>{await fetch('/api/auth/logout',{method:'POST'});location.reload()}}>Salir</button><button className="primary" onClick={()=>setModal(true)}>+ Nueva solicitud</button></div></header>{notice&&<p className="lifecycleNotice" role="status">{notice}</p>}{current?<Detail key={current.id} item={current} user={user} onClose={()=>setOpen(null)} onSign={sign} onTrash={id=>lifecycle(id,'trash')} busy={busy} refresh={load}/>:tab==='inicio'?<Home pending={pending} audit={audit} onOpen={setOpen} onCreate={()=>setModal(true)}/>:tab==='solicitudes'?<List rows={rows} onOpen={setOpen}/>:tab==='masiva'?<Mass rows={pending} selected={selected} setSelected={setSelected} onOpen={setOpen} onSign={massSign} busy={busy}/>:tab==='papelera'&&user.role==='ADMIN'?<Trash rows={trash} busy={busy} onRestore={id=>lifecycle(id,'restore')}/>:tab==='perfil'?<Profile user={user} onSaved={()=>setNotice('Perfil guardado. Las firmas anteriores no se modifican.')}/>:<Audit rows={audit}/>}</main>{modal&&<CreateModal onClose={()=>setModal(false)} onCreated={async id=>{setModal(false);await load();setOpen(id)}}/>}{signIntent&&<SignConsent key={signIntent.nonce} intent={signIntent} busy={busy} onCancel={()=>{if(!operation.current)setSignIntent(null)}} onConfirm={confirmSignature}/>}</div>
+}
+
+function SignConsent({intent,busy,onCancel,onConfirm}){
+ const [useSignature,setUseSignature]=useState(false),[accepted,setAccepted]=useState(false),[previewReady,setPreviewReady]=useState(false),[previewError,setPreviewError]=useState(false),profile=intent.profile;
+ return <div className="overlay"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="sign-consent-title"><div className="modalHead"><div><span className="eyebrow">CONFIRMACIÓN PERSONAL</span><h2 id="sign-consent-title">{intent.action==='APPROVED'?'Aprobar':'Firmar'} documento(s)</h2></div><button type="button" disabled={busy} onClick={onCancel} aria-label="Cancelar firma">×</button></div><p>Actúas con tu sesión verificada. Se incorporarán los datos de tu perfil que se muestran aquí; guardarlos no autorizaba firmar documentos.</p><div className="docInfo"><b>{profile.name}</b><span>{profile.title||'Sin cargo declarado'} · {profile.rut?`RUT: ${profile.rut}`:'Sin RUT declarado'}</span></div><ul>{intent.items.map(item=><li key={item.id}>{item.id} · versión {item.expectedVersion}</li>)}</ul>{profile.signature?.available?<label className="signatureConsent"><input type="checkbox" checked={useSignature} disabled={busy} onChange={e=>{setUseSignature(e.target.checked);setPreviewReady(false);setPreviewError(false)}}/> Incluir mi firma dibujada guardada en cada documento listado</label>:<p>No tienes firma dibujada guardada. Se registrará únicamente el sello operativo con los datos indicados.</p>}{useSignature&&<img className="consentSignaturePreview" src={`/api/profile/asset?kind=signature&revision=${encodeURIComponent(profile.revision||'')}`} alt="Tu firma dibujada guardada" onLoad={()=>setPreviewReady(true)} onError={()=>{setPreviewReady(false);setPreviewError(true)}}/>}{previewError&&<p role="alert">No se pudo cargar la firma confirmada. Cancela y vuelve a abrir esta confirmación.</p>}<p className="legal">El RUT se valida sólo por formato y dígito verificador; no acredita identidad. La imagen de firma es una marca visual, no una firma electrónica avanzada ni criptográfica. Cambiar o revocar tu perfil no modifica versiones ya firmadas.</p><label className="signatureConsent"><input type="checkbox" checked={accepted} disabled={busy} onChange={e=>setAccepted(e.target.checked)}/> Revisé las versiones listadas y autorizo personalmente esta acción con los datos indicados.</label><div className="modalFoot"><button type="button" className="ghost" disabled={busy} onClick={onCancel}>Cancelar</button><button type="button" className="primary" disabled={busy||!accepted||(useSignature&&!previewReady)} onClick={()=>onConfirm(useSignature)}>{busy?'Registrando…':'Confirmar acción'}</button></div></section></div>
 }
 
 function Trash({rows,busy,onRestore}){return <><SectionTitle title="Papelera recuperable" text="Los expedientes conservan sus documentos, firmas, estado y auditoría. Restaura una solicitud para volver a consultarla o continuar su flujo."/>{rows.length?<div className="tableWrap"><table><thead><tr><th>Solicitud</th><th>OT · Proveedor</th><th>Estado conservado</th><th>Movida a papelera</th><th>Administrador</th><th>Acción</th></tr></thead><tbody>{rows.map(r=><tr key={r.id}><td className="mono">{r.id}</td><td>{r.ot} · {r.supplier}</td><td>{stateLabel[r.status]||r.status}</td><td>{when(r.deletedAt)}</td><td>{r.deletedBy}</td><td><button className="ghost" disabled={busy} onClick={()=>onRestore(r.id)}>Restaurar</button></td></tr>)}</tbody></table></div>:<div className="empty"><h3>La papelera está vacía.</h3></div>}</>}
