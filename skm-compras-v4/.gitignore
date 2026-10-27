@@ -1,0 +1,9 @@
+node_modules/
+.next/
+public/pdf.worker.min.mjs
+.env*
+!.env.example
+
+test-results/
+
+*.traineddata

@@ -1,20 +1,21 @@
 {
-  "name":"skm-compras-control-v4",
-  "version":"4.1.0",
-  "private":true,
-  "scripts":{
-    "build":"next build",
-    "dev":"next dev",
-    "start":"next start",
-    "postinstall":"mkdir -p public && cp node_modules/pdfjs-dist/build/pdf.worker.min.mjs public/pdf.worker.min.mjs"
+  "name": "skm-compras-control-v4",
+  "version": "4.1.0",
+  "private": true,
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev",
+    "start": "next start",
+    "postinstall": "mkdir -p public && cp node_modules/pdfjs-dist/build/pdf.worker.min.mjs public/pdf.worker.min.mjs"
   },
-  "dependencies":{
-    "@vercel/blob":"latest",
-    "next":"latest",
-    "react":"latest",
-    "react-dom":"latest",
-    "pdf-lib":"^1.17.1",
-    "pdfjs-dist":"^4.10.38",
-    "tesseract.js":"^6.0.1"
+  "dependencies": {
+    "@napi-rs/canvas": "0.1.80",
+    "@vercel/blob": "latest",
+    "next": "latest",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^4.10.38",
+    "react": "latest",
+    "react-dom": "latest",
+    "tesseract.js": "^6.0.1"
   }
 }
