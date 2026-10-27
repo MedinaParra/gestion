@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import {cookies} from 'next/headers';
 
 const COOKIE='skm_purchase_session';
-const secret=()=>process.env.SESSION_SECRET||'dev-only-change-me';
+const secret=()=>{const value=process.env.SESSION_SECRET;if(typeof value!=='string'||Buffer.byteLength(value,'utf8')<32){const e=new Error('Configuración de sesión no disponible.');e.status=503;throw e}return value};
 const adminEmail=()=>String(process.env.PRIMARY_ADMIN_EMAIL||process.env.ADMIN_EMAIL||'').toLowerCase();
 const sign=p=>crypto.createHmac('sha256',secret()).update(p).digest('base64url');
 
