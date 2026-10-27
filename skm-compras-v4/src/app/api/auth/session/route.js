@@ -1,3 +1,3 @@
 import {NextResponse} from 'next/server';
-import {getSession,roleFor} from '../../../../lib/session';
-export async function GET(){const user=await getSession();return NextResponse.json({user:user?{...user,role:roleFor(user.email)}:null,googleClientId:process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID||process.env.GOOGLE_CLIENT_ID||''})}
+import {getSession} from '../../../../lib/session';
+export async function GET(){try{const user=await getSession();return NextResponse.json({user,googleClientId:process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID||process.env.GOOGLE_CLIENT_ID||''},{headers:{'Cache-Control':'private, no-store'}})}catch(e){return NextResponse.json({user:null,error:e.status?e.message:'No fue posible comprobar la sesión',googleClientId:process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID||process.env.GOOGLE_CLIENT_ID||''},{status:[401,403].includes(e.status)?200:e.status||503,headers:{'Cache-Control':'private, no-store'}})}}

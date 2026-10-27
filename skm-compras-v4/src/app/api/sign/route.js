@@ -1,3 +1,5 @@
+import {authorizeAccount} from '../../../lib/user-access.mjs';
+import {ownerEmail} from '../../../lib/session';
 import {requireActive,requestId,requireSameOrigin,fail} from '../../../lib/request-lifecycle.mjs';
 import crypto from 'node:crypto';
 import {NextResponse} from 'next/server';
@@ -12,8 +14,9 @@ async function buffer(stream){return Buffer.from(await new Response(stream).arra
 
 export async function POST(req){try{
   const user=requireUser(await getSession());requireSameOrigin(req);const body=await readProfileJson(req,8192);if(!body||typeof body!=='object'||Array.isArray(body))fail('Solicitud de firma no válida.',400);const id=requestId(body.id),action=String(body.action||'SIGNED').toUpperCase();
-  if(!label[action])return NextResponse.json({error:'Acción no válida'},{status:400});const state=await readState(),item=state.requests.find(x=>x.id===id);if(!item)return NextResponse.json({error:'Solicitud no encontrada'},{status:404});requireActive(item);
-  const signers=(item.signers||[]).map(x=>String(x).toLowerCase()),admin=roleFor(user.email)==='ADMIN';if(signers.length&&!signers.includes(user.email.toLowerCase())&&!admin)return NextResponse.json({error:'No estás incluido en la ruta de firma'},{status:403});
+  if(!label[action])return NextResponse.json({error:'Acción no válida'},{status:400});const state=await readState(),authorized=authorizeAccount(user,state,ownerEmail()),item=state.requests.find(x=>x.id===id);if(!item)return NextResponse.json({error:'Solicitud no encontrada'},{status:404});requireActive(item);
+  if(authorized.role==='USER')fail('Tu rol actual no permite firmar.',403);
+  const signers=(item.signers||[]).map(x=>String(x).toLowerCase()),admin=authorized.role==='ADMIN';if(signers.length&&!signers.includes(user.email.toLowerCase())&&!admin)return NextResponse.json({error:'No estás incluido en la ruta de firma'},{status:403});
   if(action==='APPROVED'&&!admin)fail('Sólo el administrador puede aprobar solicitudes.',403);
   if(['APPROVED','REJECTED'].includes(item.status))fail('La solicitud está cerrada; no admite nuevas acciones de firma.',409);
   if(!['DRAFT','IN_REVIEW','IN_SIGNATURES','FINAL_APPROVAL'].includes(item.status))fail('El estado de la solicitud requiere revisión antes de firmar.',409);
@@ -34,7 +37,7 @@ export async function POST(req){try{
   const blob=await get(src.pathname,{access:'private',useCache:false});if(!blob)return NextResponse.json({error:'No se pudo recuperar el PDF'},{status:404});
   const sourceBytes=await buffer(blob.stream);
   if(crypto.createHash('sha256').update(sourceBytes).digest('hex')!==src.sha256.toLowerCase())fail('El PDF no coincide con la versión confirmada. No se firmó ni se guardaron cambios.',409);
-  const stamp={id:crypto.randomUUID(),email:user.email.toLowerCase(),name:snapshot.name,title:snapshot.title,rut:snapshot.rut,profileSnapshot:snapshot,role:roleFor(user.email),action,at:new Date().toISOString(),consent:{confirmed:true,useProfileSignature:body.useProfileSignature,documentVersion:Number(src.version||1)}};
+  const stamp={id:crypto.randomUUID(),email:user.email.toLowerCase(),name:snapshot.name,title:snapshot.title,rut:snapshot.rut,profileSnapshot:snapshot,role:authorized.role,action,at:new Date().toISOString(),consent:{confirmed:true,useProfileSignature:body.useProfileSignature,documentVersion:Number(src.version||1)}};
   const result=await stampFirstPage(sourceBytes,{...stamp,signaturePng},item.signatures);
   stamp.placement=result.placement;const signatures=[...item.signatures,stamp];
   const out=Buffer.from(result.bytes),sha256=crypto.createHash('sha256').update(out).digest('hex');const baseVersions=Array.isArray(item.versions)?item.versions:[];const version=Math.max(Number(src.version||1),...baseVersions.map(v=>Number(v.version||0)))+1;const filename=`${item.id}_v${version}_${label[action].toLowerCase()}.pdf`,pathname=`skm-compras/requests/${item.id}/v${version}-${stamp.id}-${safeName(filename)}`;await put(pathname,out,{access:'private',contentType:'application/pdf',addRandomSuffix:false});
